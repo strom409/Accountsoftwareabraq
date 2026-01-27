@@ -56,7 +56,7 @@
             <div class="col-md-2">
                 <div class="form-group-custom">
                     <label>Type <span class="text-danger">*</span></label>
-                    <select @bind="newEntry.Type" class="form-control-custom">
+                    <select @bind="EntryType" class="form-control-custom">
                         <option value="Debit">Debit</option>
                         <option value="Credit">Credit</option>
                     </select>
@@ -205,11 +205,27 @@
 
 @code {
     [Parameter] public string? VoucherNo { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
     private GeneralEntryBatchModel model = new() { EntryDate = DateTime.Now };
     private List<UIEntry> uiEntries = new();
+    private string EntryType
+    {
+        get => newEntry.Type;
+        set
+        {
+            if (newEntry.Type != value)
+            {
+                newEntry.Type = value;
+                newEntry.AccountId = 0;
+                newEntry.AccountName = "";
+                newEntry.AccountType = "";
+            }
+        }
+    }
+
     private UIEntry newEntry = new() { Type = "Debit", PaymentType = "" };
-    private string selectedUnit = "Unit 1";
-    private List<string> unitList = new() { "Unit 1", "Unit 2", "Abraq Agro Fresh LLP" };
+    private string selectedUnit = "";
+    private List<string> unitList = new(); 
     private bool IsEdit => !string.IsNullOrEmpty(VoucherNo);
     private bool isSubmitting;
     private string? errorMessage;
@@ -223,6 +239,9 @@
     protected override async Task OnInitializedAsync()
     {
         entryProfiles = await GeneralService.GetEntryProfilesAsync("JournalEntryBook");
+        unitList = await GeneralService.GetUnitNamesAsync();
+        
+        if (unitList.Any()) selectedUnit = unitList.First();
         
         if (IsEdit)
         {
@@ -349,7 +368,14 @@
 
         if (result.success)
         {
-            Navigation.NavigateTo("transactions/entries?noteType=Journal");
+            if (OnSaved.HasDelegate)
+            {
+                await OnSaved.InvokeAsync();
+            }
+            else
+            {
+                Navigation.NavigateTo("transactions/entries?noteType=Journal");
+            }
         }
         else
         {
@@ -358,9 +384,16 @@
         isSubmitting = false;
     }
 
-    private void Cancel()
+    private async Task Cancel()
     {
-        Navigation.NavigateTo("transactions/entries?noteType=Journal");
+        if (OnSaved.HasDelegate)
+        {
+            await OnSaved.InvokeAsync();
+        }
+        else
+        {
+            Navigation.NavigateTo("transactions/entries?noteType=Journal");
+        }
     }
 
     private class UIEntry

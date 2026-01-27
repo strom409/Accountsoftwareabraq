@@ -59,6 +59,7 @@ public class AppDbContext : DbContext
     public DbSet<EntryForAccount> EntryForAccounts { get; set; }
     public DbSet<Menu> Menus { get; set; }
     public DbSet<UserPermission> UserPermissions { get; set; }
+    public DbSet<UnitMaster> UnitMasters { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -288,7 +289,7 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("CreditNotes");
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.Id).HasColumnName("Id").ValueGeneratedOnAdd();
             entity.Property(e => e.CreditNoteNo).HasColumnName("CreditNoteNo").HasMaxLength(100).IsRequired();
             entity.Property(e => e.GroupId).HasColumnName("GroupId");
             entity.Property(e => e.FarmerId).HasColumnName("FarmerId");
@@ -1233,6 +1234,18 @@ public class AppDbContext : DbContext
             
             // Index for fast lookups (updated to include EntryAccountId)
             entity.HasIndex(e => new { e.AccountType, e.AccountId, e.EntryAccountId });
+        });
+
+        // Map to SQL Server Unit_master table
+        modelBuilder.Entity<UnitMaster>(entity =>
+        {
+            entity.ToTable("Unit_master");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").ValueGeneratedNever();
+            entity.Property(e => e.Ucode).HasColumnName("Ucode").HasColumnType("varchar(max)");
+            entity.Property(e => e.UnitName).HasColumnName("UnitName").HasColumnType("varchar(max)");
+            entity.Property(e => e.Stat).HasColumnName("Stat").HasColumnType("varchar(max)");
+            entity.Property(e => e.Details).HasColumnName("details").HasColumnType("varchar(max)");
         });
     }
 }

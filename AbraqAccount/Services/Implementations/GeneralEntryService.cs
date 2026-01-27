@@ -1633,6 +1633,7 @@ public class GeneralEntryService : IGeneralEntryService
                 existing.Amount = entry.Amount;
                 existing.Narration = entry.Narration;
                 existing.Type = entry.Type;
+                existing.Unit = entry.Unit; // Added Unit update
                 existing.PaymentFromSubGroupId = entry.PaymentFromSubGroupId;
                 existing.EntryForId = entry.EntryForId;
                 existing.EntryForName = entry.EntryForName;
@@ -1818,91 +1819,93 @@ public class GeneralEntryService : IGeneralEntryService
             .Select(b => new { id = b.Id, name = b.AccountName, type = "BankMaster" });
     }
 
-    public async Task<IEnumerable<LookupItem>> GetGrowerAccountsAsync(string? searchTerm, string? transactionType, string? accountSide)
+    public async Task<IEnumerable<LookupItem>> GetGrowerAccountsAsync(string? searchTerm, string? transactionType, string? accountSide, int? entryForId = null)
     {
-        // 1. Fetch grower-related SubGroupLedger IDs
-        var growerGroupIds = await _context.SubGroupLedgers
-            .Where(s => s.IsActive && (s.Name.Contains("Grower") || s.MasterGroup.Name.Contains("Grower")))
-            .Select(s => s.Id)
-            .ToListAsync();
-
-        if (!growerGroupIds.Any())
+        // Require EntryForId for strict filtering as per request (or handle null reasonably)
+        if (!entryForId.HasValue || entryForId == 0)
         {
             return new List<LookupItem>();
         }
 
-        // 2. Fetch AccountRules for BankMaster accounts
+        // 1. Fetch Rules dictionary for fast lookup
         var rules = await _context.AccountRules
-            .Where(r => r.RuleType == "AllowedNature" && r.AccountType == "BankMaster")
+            .Where(r => r.RuleType == "AllowedNature" && r.EntryAccountId == entryForId)
             .ToListAsync();
-        
-        var rulesDict = rules.ToDictionary(r => r.AccountId, r => r.Value);
 
-        // 3. Helper to check if account is allowed based on transaction type and account side
-        bool IsAllowed(int accountId)
+        bool CheckRule(string ruleValue)
         {
-            if (string.IsNullOrEmpty(transactionType) || string.IsNullOrEmpty(accountSide))
-            {
-                return true; // No filtering if type/side not specified
-            }
+            if (string.IsNullOrWhiteSpace(ruleValue)) return false;
+            if (string.Equals(ruleValue, "Both", StringComparison.OrdinalIgnoreCase)) return true;
+            if (string.Equals(ruleValue, "Cancel", StringComparison.OrdinalIgnoreCase)) return false;
 
-            // If no rule exists for this account, allow it (default = Both)
-            if (!rulesDict.ContainsKey(accountId))
-            {
-                return true;
-            }
+            if (string.IsNullOrWhiteSpace(accountSide)) return true; 
 
-            var ruleValue = rulesDict[accountId];
-            
-            // If rule is "Both", always allow
-            if (ruleValue == "Both")
-            {
-                return true;
-            }
+            if (string.Equals(ruleValue, "Debit", StringComparison.OrdinalIgnoreCase) && string.Equals(accountSide, "Debit", StringComparison.OrdinalIgnoreCase)) return true;
+            if (string.Equals(ruleValue, "Credit", StringComparison.OrdinalIgnoreCase) && string.Equals(accountSide, "Credit", StringComparison.OrdinalIgnoreCase)) return true;
 
-            // Determine what rule value is needed based on transaction type and account side
-            // For Payment: Debit side needs "Debit" rule, Credit side needs "Credit" rule
-            // For Receipt: Credit side needs "Credit" rule, Debit side needs "Debit" rule
-            // For Journal: Allow any
-            
-            if (transactionType == "Journal")
-            {
-                return true; // Journal allows any account
-            }
-
-            string neededRule = "";
-            
-            if (transactionType == "Payment")
-            {
-                neededRule = (accountSide == "Debit") ? "Debit" : "Credit";
-            }
-            else if (transactionType == "Receipt")
-            {
-                neededRule = (accountSide == "Credit") ? "Credit" : "Debit";
-            }
-
-            return ruleValue == neededRule;
+            return false;
         }
 
-        // 4. Query BankMasters that belong to grower groups
-        var query = _context.BankMasters
-            .AsNoTracking()
-            .Where(b => b.IsActive && growerGroupIds.Contains(b.GroupId));
+        // 2. Build Allowed ID Sets from Rules
+        var allowedSubGroupIds = rules
+            .Where(r => r.AccountType == "SubGroupLedger" && CheckRule(r.Value))
+            .Select(r => r.AccountId)
+            .ToHashSet();
+
+        var allowedGrowerGroupIds = rules
+            .Where(r => r.AccountType == "GrowerGroup" && CheckRule(r.Value))
+            .Select(r => r.AccountId)
+            .ToHashSet();
+
+        var allowedBankMasterIds = rules
+            .Where(r => r.AccountType == "BankMaster" && CheckRule(r.Value))
+            .Select(r => r.AccountId)
+            .ToHashSet();
+
+        var allowedFarmerIds = rules
+            .Where(r => r.AccountType == "Farmer" && CheckRule(r.Value))
+            .Select(r => r.AccountId)
+            .ToHashSet();
+
+        // 3. Query DB with Allowed List
+        var bankMastersQuery = _context.BankMasters.Where(bm => bm.IsActive);
+        var farmersQuery = _context.Farmers.Where(f => f.IsActive);
 
         if (!string.IsNullOrEmpty(searchTerm))
         {
-            query = query.Where(b => b.AccountName.Contains(searchTerm));
+            bankMastersQuery = bankMastersQuery.Where(bm => bm.AccountName.Contains(searchTerm));
+            farmersQuery = farmersQuery.Where(f => f.FarmerName.Contains(searchTerm));
         }
 
-        var accounts = await query
-            .OrderBy(b => b.AccountName)
+        // Execute Queries - Filtering by ID sets
+        // For BankMasters: Match ID OR GroupId (SubGroupLedger)
+        var bankMasters = await bankMastersQuery
+            .Where(bm => allowedBankMasterIds.Contains(bm.Id) || allowedSubGroupIds.Contains(bm.GroupId))
+            .OrderBy(bm => bm.AccountName)
             .Take(50)
             .ToListAsync();
 
-        // 5. Filter by rules and return
-        return accounts
-            .Where(b => IsAllowed(b.Id))
-            .Select(b => new LookupItem { Id = b.Id, Name = b.AccountName, Type = "BankMaster" })
-            .ToList();
+        // For Farmers: Match ID OR GroupId (GrowerGroup)
+        var farmers = await farmersQuery
+            .Where(f => allowedFarmerIds.Contains(f.Id) || allowedGrowerGroupIds.Contains(f.GroupId))
+            .OrderBy(f => f.FarmerName)
+            .Take(50)
+            .ToListAsync();
+
+        var results = new List<LookupItem>();
+        results.AddRange(bankMasters.Select(bm => new LookupItem { Id = bm.Id, Name = bm.AccountName, Type = "BankMaster", AccountNumber = bm.AccountNumber }));
+        results.AddRange(farmers.Select(f => new LookupItem { Id = f.Id, Name = f.FarmerName, Type = "Farmer", AccountNumber = f.FarmerCode }));
+
+        return results.OrderBy(r => r.Name).Take(100).ToList();
+    }
+
+    public async Task<List<string>> GetUnitNamesAsync()
+    {
+        return await _context.UnitMasters
+            .OrderBy(u => u.UnitName)
+            .Select(u => u.UnitName ?? "")
+            .Where(u => !string.IsNullOrEmpty(u))
+            .Distinct()
+            .ToListAsync();
     }
 }

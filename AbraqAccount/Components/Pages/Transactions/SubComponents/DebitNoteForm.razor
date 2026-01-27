@@ -47,6 +47,7 @@
                         SearchFunc='(t) => SearchAccounts(t, "Credit")'
                         OnAccountSelected="OnCreditAccountSelected"
                         InitialValue="@model.CreditAccountName"
+                        Disabled="@(model.EntryForId == null || model.EntryForId == 0)"
                         CssClass="form-control-custom" />
                 </div>
             </div>
@@ -58,6 +59,7 @@
                         SearchFunc='(t) => SearchAccounts(t, "Debit")'
                         OnAccountSelected="OnDebitAccountSelected"
                         InitialValue="@model.DebitAccountName"
+                        Disabled="@(model.EntryForId == null || model.EntryForId == 0)"
                         CssClass="form-control-custom" />
                 </div>
             </div>
@@ -171,15 +173,18 @@
 
 @code {
     [Parameter] public int? Id { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
     private DebitNote model = new() { DebitNoteDate = DateTime.Now };
     private bool IsEdit => Id.HasValue;
     private bool isSubmitting;
     private string? errorMessage;
-    private List<string> unitList = new() { "Unit 1", "Unit 2", "Abraq Agro Fresh LLP" };
+
+    private List<string> unitList = new();
     private IEnumerable<LookupItem>? entryProfiles;
 
     protected override async Task OnInitializedAsync()
     {
+        unitList = (await DebitNoteService.GetUnitNamesAsync()).ToList();
         entryProfiles = await DebitNoteService.GetEntryProfilesAsync();
         
         if (IsEdit)
@@ -206,6 +211,11 @@
         model.CreditAccountId = account.Id;
         model.CreditAccountType = account.Type ?? "BankMaster";
         model.CreditAccountName = account.Name;
+        
+        if (model.CreditAccountType.Contains("BankMaster", StringComparison.OrdinalIgnoreCase))
+        {
+            model.BankMasterId = account.Id;
+        }
     }
 
     private void OnDebitAccountSelected(LookupItem account)
@@ -213,6 +223,11 @@
         model.DebitAccountId = account.Id;
         model.DebitAccountType = account.Type ?? "BankMaster";
         model.DebitAccountName = account.Name;
+
+        if (model.DebitAccountType.Contains("BankMaster", StringComparison.OrdinalIgnoreCase))
+        {
+            model.BankMasterId = account.Id;
+        }
     }
 
     private void OnEntryForChanged(ChangeEventArgs e)
@@ -248,7 +263,14 @@
 
         if (result.success)
         {
-            Navigation.NavigateTo("transactions/entries?noteType=Debit");
+            if (OnSaved.HasDelegate)
+            {
+                await OnSaved.InvokeAsync();
+            }
+            else
+            {
+                Navigation.NavigateTo("transactions/entries?noteType=Debit");
+            }
         }
         else
         {
@@ -263,8 +285,15 @@
         errorMessage = null;
     }
 
-    private void Cancel()
+    private async Task Cancel()
     {
-        Navigation.NavigateTo("transactions/entries?noteType=Debit");
+        if (OnSaved.HasDelegate)
+        {
+            await OnSaved.InvokeAsync();
+        }
+        else
+        {
+            Navigation.NavigateTo("transactions/debit-note");
+        }
     }
 }

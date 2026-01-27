@@ -22,5 +22,6 @@ public interface ICreditNoteService
     Task<(bool success, string message)> ApproveCreditNoteAsync(int id);
     Task<(bool success, string message)> UnapproveCreditNoteAsync(int id);
     Task<int?> GetEntryProfileIdAsync(int creditAccountId, string creditType, int debitAccountId, string debitType);
+    Task<IEnumerable<string>> GetUnitNamesAsync();
 }
 

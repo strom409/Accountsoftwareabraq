@@ -59,6 +59,7 @@ public interface IGeneralEntryService
     
     Task<IEnumerable<object>> GetGrowerGroupsAsync(string? searchTerm);
     Task<IEnumerable<object>> GetFarmersByGroupAsync(int? groupId, string? searchTerm, string? type = null);
-    Task<IEnumerable<LookupItem>> GetGrowerAccountsAsync(string? searchTerm, string? transactionType, string? accountSide);
+    Task<IEnumerable<LookupItem>> GetGrowerAccountsAsync(string? searchTerm, string? transactionType, string? accountSide, int? entryForId = null);
+    Task<List<string>> GetUnitNamesAsync();
 }
 

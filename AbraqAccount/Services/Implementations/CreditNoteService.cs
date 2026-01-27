@@ -8,11 +8,13 @@ namespace AbraqAccount.Services.Implementations;
 
 public class CreditNoteService : ICreditNoteService
 {
-    private readonly AppDbContext _context;
+    private readonly AppDbContext _context; // Keep existing for non-async-heavy standard ops
+    private readonly IDbContextFactory<AppDbContext> _contextFactory; // For isolated lookups
 
-    public CreditNoteService(AppDbContext context)
+    public CreditNoteService(AppDbContext context, IDbContextFactory<AppDbContext> contextFactory)
     {
         _context = context;
+        _contextFactory = contextFactory;
     }
 
     public async Task<(List<CreditNote> notes, int totalCount, int totalPages)> GetCreditNotesAsync(
@@ -56,6 +58,7 @@ public class CreditNoteService : ICreditNoteService
         model.CreditNoteNo = await GenerateCreditNoteNoAsync();
         model.CreatedAt = DateTime.Now;
         model.IsActive = true;
+        model.Id = 0; // Ensure EF treats this as new
         if (string.IsNullOrEmpty(model.Status)) model.Status = "UnApproved";
 
         _context.Add(model);
@@ -228,16 +231,16 @@ public class CreditNoteService : ICreditNoteService
 
     public async Task<IEnumerable<LookupItem>> GetAccountsAsync(string? searchTerm, int? entryAccountId = null, string? type = null)
     {
-        // Fetch Rules dictionary for fast lookup
-        var rules = await _context.AccountRules
+        Console.WriteLine($"[CreditNoteService] GetAccountsAsync HIT! Term: '{searchTerm}', Profile: {entryAccountId}, Type: {type}");
+
+        // USE FRESH CONTEXT to avoid concurrency issues in Blazor Server
+        using var context = await _contextFactory.CreateDbContextAsync();
+
+        // 1. Fetch Rules dictionary for fast lookup
+        var rules = await context.AccountRules
             .Where(r => r.RuleType == "AllowedNature")
             .ToListAsync();
-        
-        var rulesDict = rules
-            .GroupBy(r => $"{r.AccountType}-{r.AccountId}")
-            .ToDictionary(g => g.Key, g => g.First().Value);
 
-        // Helper to get rule value
         string? GetRuleValue(string accountType, int accountId, int? entryId)
         {
             if (entryId.HasValue)
@@ -250,71 +253,132 @@ public class CreditNoteService : ICreditNoteService
             return null;
         }
 
-        // Helper to check if account is allowed
+        bool CheckRule(string ruleValue)
+        {
+            if (string.IsNullOrWhiteSpace(ruleValue)) return false;
+            if (ruleValue.Equals("Both", StringComparison.OrdinalIgnoreCase)) return true;
+            if (ruleValue.Equals("Cancel", StringComparison.OrdinalIgnoreCase)) return false;
+
+            if (string.IsNullOrWhiteSpace(type)) return true; // If no type context, assume allowed if not 'Cancel'
+
+            if (ruleValue.Equals("Debit", StringComparison.OrdinalIgnoreCase) && type.Equals("Debit", StringComparison.OrdinalIgnoreCase)) return true;
+            if (ruleValue.Equals("Credit", StringComparison.OrdinalIgnoreCase) && type.Equals("Credit", StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        // Helper to check if account is allowed (for global search fallback)
         bool IsAllowed(string accountType, int accountId, string? fallbackType = null, int? fallbackId = null)
         {
-            // Use provided type or default to "Credit"
-            string filterType = type ?? "Credit";
-
+            // 1. Check Specific Account Rule
             string? ruleValue = GetRuleValue(accountType, accountId, entryAccountId);
-
             if (ruleValue != null)
             {
-                return CheckRule(ruleValue, filterType);
+                return CheckRule(ruleValue);
             }
 
+            // 2. Check Fallback Group Rule
             if (fallbackType != null && fallbackId.HasValue)
             {
                 string? fallbackRuleValue = GetRuleValue(fallbackType, fallbackId.Value, entryAccountId);
                 if (fallbackRuleValue != null)
                 {
-                    return CheckRule(fallbackRuleValue, filterType);
+                    return CheckRule(fallbackRuleValue);
                 }
             }
-
             return true; // No rule = Allowed
         }
 
-        bool CheckRule(string ruleValue, string type)
+        // ---------------------------------------------------------
+        // LOGIC MATCHING MVC GeneralEntryService
+        // ---------------------------------------------------------
+
+        if (entryAccountId.HasValue)
         {
-            if (ruleValue == "Both") return true;
-            if (ruleValue == "Cancel") return false;
-            if (ruleValue == "Debit" && type == "Debit") return true;
-            if (ruleValue == "Credit" && type == "Credit") return true;
-            return false;
+            // STRICT FILTERING: Only show accounts allowed by the Profile's Rules
+
+            // 1. Get Rules for this Profile
+            var profileRules = rules.Where(r => r.EntryAccountId == entryAccountId.Value).ToList();
+
+            // 2. Build Allowed ID Sets
+            var allowedSubGroupIds = profileRules
+                .Where(r => r.AccountType == "SubGroupLedger" && CheckRule(r.Value))
+                .Select(r => r.AccountId)
+                .ToHashSet();
+
+            var allowedGrowerGroupIds = profileRules
+                .Where(r => r.AccountType == "GrowerGroup" && CheckRule(r.Value))
+                .Select(r => r.AccountId)
+                .ToHashSet();
+
+            var allowedBankMasterIds = profileRules
+                .Where(r => r.AccountType == "BankMaster" && CheckRule(r.Value))
+                .Select(r => r.AccountId)
+                .ToHashSet();
+
+            var allowedFarmerIds = profileRules
+                .Where(r => r.AccountType == "Farmer" && CheckRule(r.Value))
+                .Select(r => r.AccountId)
+                .ToHashSet();
+
+            // 3. Query DB with Allowed List
+            var bankMastersQuery = context.BankMasters.Where(bm => bm.IsActive);
+            var farmersQuery = context.Farmers.Where(f => f.IsActive);
+
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                bankMastersQuery = bankMastersQuery.Where(bm => bm.AccountName.Contains(searchTerm));
+                farmersQuery = farmersQuery.Where(f => f.FarmerName.Contains(searchTerm));
+            }
+
+            // Execute Queries - Filtering by ID sets
+            var bankMasters = await bankMastersQuery
+                .Where(bm => allowedBankMasterIds.Contains(bm.Id) || allowedSubGroupIds.Contains(bm.GroupId))
+                .OrderBy(bm => bm.AccountName)
+                .Take(50)
+                .ToListAsync();
+
+            var farmers = await farmersQuery
+                .Where(f => allowedFarmerIds.Contains(f.Id) || allowedGrowerGroupIds.Contains(f.GroupId))
+                .OrderBy(f => f.FarmerName)
+                .Take(50)
+                .ToListAsync();
+
+            var results = new List<LookupItem>();
+            results.AddRange(bankMasters.Select(bm => new LookupItem { Id = bm.Id, Name = bm.AccountName, Type = "BankMaster", AccountNumber = bm.AccountNumber }));
+            results.AddRange(farmers.Select(f => new LookupItem { Id = f.Id, Name = f.FarmerName, Type = "Farmer", AccountNumber = f.FarmerCode })); // Assuming FarmerCode
+
+            Console.WriteLine($"[CreditNoteService] Profile Filter Results: {results.Count}");
+            return results.OrderBy(r => r.Name).Take(100).ToList();
         }
-
-        // Search logic similar to GeneralEntryService bit for CreditNote
-        var bankMastersQuery = _context.BankMasters.Where(bm => bm.IsActive);
-        var farmersQuery = _context.Farmers.Where(f => f.IsActive);
-
-        if (!string.IsNullOrEmpty(searchTerm))
+        else
         {
-            bankMastersQuery = bankMastersQuery.Where(bm => bm.AccountName.Contains(searchTerm));
-            farmersQuery = farmersQuery.Where(f => f.FarmerName.Contains(searchTerm));
+            // GLOBAL SEARCH (No Profile Selected) - Fallback to previous logic (fetch then filter)
+            
+            var bankMastersQuery = context.BankMasters.Where(bm => bm.IsActive);
+            var farmersQuery = context.Farmers.Where(f => f.IsActive);
+
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                bankMastersQuery = bankMastersQuery.Where(bm => bm.AccountName.Contains(searchTerm));
+                farmersQuery = farmersQuery.Where(f => f.FarmerName.Contains(searchTerm));
+            }
+
+            var bankMasters = await bankMastersQuery.OrderBy(bm => bm.AccountName).Take(200).ToListAsync();
+            var farmers = await farmersQuery.OrderBy(f => f.FarmerName).Take(200).ToListAsync();
+
+            var results = new List<LookupItem>();
+
+            results.AddRange(bankMasters
+                .Where(bm => IsAllowed("BankMaster", bm.Id, "SubGroupLedger", bm.GroupId))
+                .Select(bm => new LookupItem { Id = bm.Id, Name = bm.AccountName, Type = "BankMaster", AccountNumber = bm.AccountNumber }));
+
+            results.AddRange(farmers
+                .Where(f => IsAllowed("Farmer", f.Id, "GrowerGroup", f.GroupId))
+                .Select(f => new LookupItem { Id = f.Id, Name = f.FarmerName, Type = "Farmer", AccountNumber = f.FarmerCode }));
+            
+            Console.WriteLine($"[CreditNoteService] Global Search Results: {results.Count}");
+            return results.OrderBy(r => r.Name).Take(100).ToList();
         }
-
-        var bankMasters = await bankMastersQuery
-            .OrderBy(bm => bm.AccountName)
-            .Take(50)
-            .ToListAsync();
-
-        var farmers = await farmersQuery
-            .OrderBy(f => f.FarmerName)
-            .Take(50)
-            .ToListAsync();
-
-        var results = new List<LookupItem>();
-        
-        results.AddRange(bankMasters
-            .Where(bm => IsAllowed("BankMaster", bm.Id, "SubGroupLedger", bm.GroupId))
-            .Select(bm => new LookupItem { Id = bm.Id, Name = bm.AccountName, Type = "BankMaster" }));
-
-        results.AddRange(farmers
-            .Where(f => IsAllowed("Farmer", f.Id, "GrowerGroup", f.GroupId))
-            .Select(f => new LookupItem { Id = f.Id, Name = f.FarmerName, Type = "Farmer" }));
-
-        return results.OrderBy(r => r.Name).Take(100).ToList();
     }
 
     private async Task<string> GenerateCreditNoteNoAsync()
@@ -369,6 +433,16 @@ public class CreditNoteService : ICreditNoteService
         // We could default to "Global" or similar if needed?
         // For now, return null.
         return null;
+    }
+
+    public async Task<IEnumerable<string>> GetUnitNamesAsync()
+    {
+        return await _context.UnitMasters
+            .OrderBy(u => u.UnitName)
+            .Select(u => u.UnitName ?? "")
+            .Where(u => !string.IsNullOrEmpty(u))
+            .Distinct()
+            .ToListAsync();
     }
 }
 

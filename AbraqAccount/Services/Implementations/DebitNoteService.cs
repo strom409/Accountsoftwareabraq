@@ -11,19 +11,18 @@ namespace AbraqAccount.Services.Implementations;
 public class DebitNoteService : IDebitNoteService
 {
     private readonly AppDbContext _context;
+    private readonly IDbContextFactory<AppDbContext> _contextFactory;
 
-    public DebitNoteService(AppDbContext context)
+    public DebitNoteService(AppDbContext context, IDbContextFactory<AppDbContext> contextFactory)
     {
         _context = context;
+        _contextFactory = contextFactory;
     }
 
     public async Task<(List<DebitNote> notes, int totalCount, int totalPages)> GetDebitNotesAsync(
         string? unit, string? debitNoteNo, string? vendor, string? status, 
         DateTime? fromDate, DateTime? toDate, int page, int pageSize)
     {
-        var allAccounts = await _context.BankMasters.Where(b => b.IsActive).ToListAsync();
-        var accountsDict = allAccounts.ToDictionary(a => a.Id, a => a);
-
         var query = _context.DebitNotes.AsQueryable();
 
         if (!string.IsNullOrEmpty(unit) && unit != "ALL") query = query.Where(d => d.Unit == unit);
@@ -32,21 +31,17 @@ public class DebitNoteService : IDebitNoteService
         if (fromDate.HasValue) query = query.Where(d => d.DebitNoteDate >= fromDate.Value);
         if (toDate.HasValue) query = query.Where(d => d.DebitNoteDate <= toDate.Value);
 
+        // Fetch all matching notes first (in-memory filtration for polymorphic names required)
         var allDebitNotes = await query.OrderByDescending(d => d.CreatedAt).ToListAsync();
-        var mappings = await LoadBankMasterIdMappingsAsync();
-
-        foreach (var note in allDebitNotes)
-        {
-            int actualBankMasterId = note.BankMasterId ?? 0;
-            if (mappings.TryGetValue(note.Id, out int mappedBankMasterId)) actualBankMasterId = mappedBankMasterId;
-            
-            if (accountsDict.TryGetValue(actualBankMasterId, out var account)) note.BankMaster = account;
-        }
+        
+        // Populate Polymorphic Names
+        await PopulateAccountNamesAsync(allDebitNotes);
 
         if (!string.IsNullOrEmpty(vendor))
         {
             allDebitNotes = allDebitNotes
-                .Where(d => d.BankMaster != null && d.BankMaster.AccountName.Contains(vendor, StringComparison.OrdinalIgnoreCase))
+                .Where(d => (d.CreditAccountName != null && d.CreditAccountName.Contains(vendor, StringComparison.OrdinalIgnoreCase)) 
+                         || (d.DebitAccountName != null && d.DebitAccountName.Contains(vendor, StringComparison.OrdinalIgnoreCase)))
                 .ToList();
         }
 
@@ -90,57 +85,20 @@ public class DebitNoteService : IDebitNoteService
             debitNote.Status = debitNote.Status ?? "UnApproved";
             debitNote.IsActive = true;
 
-             // Logic to handle BankMasterId via temporary SQL (as in original controller)
-            var defaultFarmerId = await _context.Farmers.Where(f => f.IsActive).Select(f => f.Id).FirstOrDefaultAsync();
-            if (defaultFarmerId == 0) defaultFarmerId = 1; // Fallback
+            // Handle BankMasterId safely: Allow null, do not force 0
+            // if (debitNote.BankMasterId == null) debitNote.BankMasterId = 0; 
 
-            var defaultGroupId = await _context.GrowerGroups.Where(g => g.IsActive).Select(g => g.Id).FirstOrDefaultAsync();
-            if (defaultGroupId == 0) defaultGroupId = 1;
-
-            var sql = @"
-                INSERT INTO [dbo].[DebitNotes] 
-                ([DebitNoteNo], [Unit], [BankMasterId], [CreditAccountId], [CreditAccountType], [DebitAccountId], [DebitAccountType], [GroupId], [FarmerId], [DebitNoteDate], [Amount], [Status], [Narration], [CreatedAt], [IsActive], [EntryForId], [EntryForName])
-                VALUES 
-                ({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}, {12}, {13}, {14}, {15}, {16})
-            ";
-            
-            await _context.Database.ExecuteSqlRawAsync(sql,
-                debitNote.DebitNoteNo,
-                debitNote.Unit,
-                debitNote.BankMasterId,
-                debitNote.CreditAccountId,
-                debitNote.CreditAccountType ?? "",
-                debitNote.DebitAccountId,
-                debitNote.DebitAccountType ?? "",
-                defaultGroupId,
-                defaultFarmerId,
-                debitNote.DebitNoteDate,
-                debitNote.Amount,
-                debitNote.Status,
-                debitNote.Narration,
-                debitNote.CreatedAt,
-                debitNote.IsActive,
-                debitNote.EntryForId,
-                debitNote.EntryForName ?? (object)DBNull.Value
-            );
-
-             var insertedNote = await _context.DebitNotes
-                .Where(d => d.DebitNoteNo == debitNote.DebitNoteNo)
-                .OrderByDescending(d => d.Id)
-                .FirstOrDefaultAsync();
-            
-            if (insertedNote == null) return (false, "Failed to retrieve inserted note.");
-            debitNote.Id = insertedNote.Id;
-
-            await StoreBankMasterIdMappingAsync(insertedNote.Id, debitNote.BankMasterId ?? 0);
-
-             foreach (var detail in details)
+            // Assign details properties
+            foreach (var detail in details)
             {
-                detail.DebitNoteId = debitNote.Id;
                 detail.CreatedAt = DateTime.Now;
-                _context.DebitNoteDetails.Add(detail);
             }
+
+            _context.DebitNotes.Add(debitNote);
             await _context.SaveChangesAsync();
+
+            // Store legacy mapping if needed (keeping original logic)
+            await StoreBankMasterIdMappingAsync(debitNote.Id, debitNote.BankMasterId ?? 0);
 
             return (true, $"Debit Note created successfully! {details.Count} detail(s) added.");
         }
@@ -313,124 +271,151 @@ public class DebitNoteService : IDebitNoteService
 
     public async Task<IEnumerable<LookupItem>> GetAccountsAsync(string? searchTerm, int? entryAccountId = null, string? type = null)
     {
-        // 1. Fetch Rules (Optimization: We could only fetch relevant rules if entryAccountId is provided)
-        var rules = await _context.AccountRules
+        // USE FRESH CONTEXT to avoid concurrency issues
+        using var context = await _contextFactory.CreateDbContextAsync();
+
+        // 1. Fetch Rules dictionary for fast lookup
+        var rules = await context.AccountRules
             .Where(r => r.RuleType == "AllowedNature")
             .ToListAsync();
-        
-        // Helper to check rule value
+
         string? GetRuleValue(string accountType, int accountId, int? entryId)
         {
-             if (entryId.HasValue)
-             {
-                 var specificRule = rules.FirstOrDefault(r => r.AccountType == accountType && r.AccountId == accountId && r.EntryAccountId == entryId);
-                 if (specificRule != null) return specificRule.Value;
-             }
-             var defaultRule = rules.FirstOrDefault(r => r.AccountType == accountType && r.AccountId == accountId && r.EntryAccountId == null);
-             if (defaultRule != null) return defaultRule.Value;
-             return null;
+            if (entryId.HasValue)
+            {
+                var specificRule = rules.FirstOrDefault(r => r.AccountType == accountType && r.AccountId == accountId && r.EntryAccountId == entryId);
+                if (specificRule != null) return specificRule.Value;
+            }
+            var defaultRule = rules.FirstOrDefault(r => r.AccountType == accountType && r.AccountId == accountId && r.EntryAccountId == null);
+            if (defaultRule != null) return defaultRule.Value;
+            return null;
         }
 
-        // Helper to check if account is allowed
+        bool CheckRule(string ruleValue)
+        {
+            if (string.IsNullOrWhiteSpace(ruleValue)) return false;
+            if (ruleValue.Equals("Both", StringComparison.OrdinalIgnoreCase)) return true;
+            if (ruleValue.Equals("Cancel", StringComparison.OrdinalIgnoreCase)) return false;
+
+            if (string.IsNullOrWhiteSpace(type)) return true; 
+
+            if (ruleValue.Equals("Debit", StringComparison.OrdinalIgnoreCase) && type.Equals("Debit", StringComparison.OrdinalIgnoreCase)) return true;
+            if (ruleValue.Equals("Credit", StringComparison.OrdinalIgnoreCase) && type.Equals("Credit", StringComparison.OrdinalIgnoreCase)) return true;
+
+            return false;
+        }
+
+        // Helper to check if account is allowed (for global search fallback)
         bool IsAllowed(string accountType, int accountId, string? fallbackType = null, int? fallbackId = null)
         {
-            // Use provided type or default to "Debit"
-            string filterType = type ?? "Debit";
-
+            // 1. Check Specific Account Rule
             string? ruleValue = GetRuleValue(accountType, accountId, entryAccountId);
-            
             if (ruleValue != null)
             {
-                return CheckRule(ruleValue, filterType);
+                return CheckRule(ruleValue);
             }
 
+            // 2. Check Fallback Group Rule
             if (fallbackType != null && fallbackId.HasValue)
             {
                 string? fallbackRuleValue = GetRuleValue(fallbackType, fallbackId.Value, entryAccountId);
                 if (fallbackRuleValue != null)
                 {
-                    return CheckRule(fallbackRuleValue, filterType);
+                    return CheckRule(fallbackRuleValue);
                 }
             }
-
             return true; // No rule = Allowed
         }
 
-        bool CheckRule(string ruleValue, string type)
-        {
-            if (ruleValue == "Both") return true;
-            if (ruleValue == "Cancel") return false;
-            if (ruleValue == "Debit" && type == "Debit") return true;
-            if (ruleValue == "Credit" && type == "Credit") return true;
-            return false;
-        }
+        // ---------------------------------------------------------
+        // LOGIC MATCHING MVC GeneralEntryService
+        // ---------------------------------------------------------
 
-        // 2. Query Logic
-        var bankMastersQuery = _context.BankMasters.Where(b => b.IsActive);
-        // Note: Debit Notes might also need Farmers/Groups? 
-        // Current implementation only queried BankMasters (Vendors). 
-        // We will stick to BankMasters for consistency with previous code, 
-        // but if farmers are needed, they should be added here.
-
-        if (!string.IsNullOrEmpty(searchTerm))
-        {
-             bankMastersQuery = bankMastersQuery.Where(b => b.AccountName.Contains(searchTerm) || (b.AccountNumber != null && b.AccountNumber.Contains(searchTerm)));
-        }
-
-        // If we want strict filtering in SQL (to avoid checking IsAllowed on 1000 items in memory), we need to extract IDs.
-        // But since we are reusing the 'IsAllowed' helper which depends on 'rules' list (in-memory),
-        // we can either:
-        // A) Fetch ALL BankMasters (or a large batch) and filter in memory.
-        // B) Pre-calculate allowed IDs from rules (if entryAccountId is set).
-        
         if (entryAccountId.HasValue)
         {
-            // Optimization for Profile:
+            // STRICT FILTERING: Only show accounts allowed by the Profile's Rules
+
+            // 1. Get Rules for this Profile
             var profileRules = rules.Where(r => r.EntryAccountId == entryAccountId.Value).ToList();
-            
-            // This optimization logic assumes we only care about Explicit Rules or Default Rules.
-            // Since 'IsAllowed' logic handles fallback and defaults complexly, 
-            // the safest robust method without complex SQL translation is:
-            // 1. Get IDs that are explicitly allowed/disallowed.
-            // 2. OR just fetch a larger batch (e.g. 500) and filter in memory, then Take(50).
-            
-            // Previous 'CreditNoteService' used the ID Set approach. Let's use similar for BankMasters.
-            var allowedBankMasterIds = profileRules
-                .Where(r => r.AccountType == "BankMaster" && CheckRule(r.Value, type ?? "Debit"))
-                .Select(r => r.AccountId)
-                .ToHashSet();
 
+            // 2. Build Allowed ID Sets
             var allowedSubGroupIds = profileRules
-                .Where(r => r.AccountType == "SubGroupLedger" && CheckRule(r.Value, type ?? "Debit"))
+                .Where(r => r.AccountType == "SubGroupLedger" && CheckRule(r.Value))
                 .Select(r => r.AccountId)
                 .ToHashSet();
-            
-            // If we have explicit rules, we can filter by them.
-            // Accounts NOT in rules fall back to "Allowed" (return true).
-            // So we can't just WHERE IN (allowedIds). We must include those that have NO rule.
-            
-            // Actually, the user's main issue was "Take(50) before filtering".
-            // So we just need to ensure we filter BEFORE taking.
-            // Since 'IsAllowed' is C#, we can't translate it to SQL easily.
-            // EXCEPT if we fetch all potential matches.
-            
-            var candidates = await bankMastersQuery.OrderBy(b => b.AccountName).Take(500).ToListAsync();
-            
-            var filtered = candidates
-                .Where(b => IsAllowed("BankMaster", b.Id, "SubGroupLedger", b.GroupId))
-                .Take(50) // Take 50 valid ones
-                .Select(b => new LookupItem { Id = b.Id, Name = b.AccountName, AccountNumber = b.AccountNumber ?? "" })
-                .ToList();
-                
-            return filtered;
-        }
 
-        // Global Search (entryAccountId null)
-        var globalCandidates = await bankMastersQuery.OrderBy(b => b.AccountName).Take(50).ToListAsync();
-        return globalCandidates
-             .Where(b => IsAllowed("BankMaster", b.Id, "SubGroupLedger", b.GroupId))
-             .Select(b => new LookupItem { Id = b.Id, Name = b.AccountName, AccountNumber = b.AccountNumber ?? "" })
-             .ToList();
+            var allowedGrowerGroupIds = profileRules
+                .Where(r => r.AccountType == "GrowerGroup" && CheckRule(r.Value))
+                .Select(r => r.AccountId)
+                .ToHashSet();
+
+            var allowedBankMasterIds = profileRules
+                .Where(r => r.AccountType == "BankMaster" && CheckRule(r.Value))
+                .Select(r => r.AccountId)
+                .ToHashSet();
+
+            var allowedFarmerIds = profileRules
+                .Where(r => r.AccountType == "Farmer" && CheckRule(r.Value))
+                .Select(r => r.AccountId)
+                .ToHashSet();
+
+            // 3. Query DB with Allowed List
+            var bankMastersQuery = context.BankMasters.Where(bm => bm.IsActive);
+            var farmersQuery = context.Farmers.Where(f => f.IsActive);
+
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                bankMastersQuery = bankMastersQuery.Where(bm => bm.AccountName.Contains(searchTerm));
+                farmersQuery = farmersQuery.Where(f => f.FarmerName.Contains(searchTerm));
+            }
+
+            // Execute Queries - Filtering by ID sets
+            var bankMasters = await bankMastersQuery
+                .Where(bm => allowedBankMasterIds.Contains(bm.Id) || allowedSubGroupIds.Contains(bm.GroupId))
+                .OrderBy(bm => bm.AccountName)
+                .Take(50)
+                .ToListAsync();
+
+            var farmers = await farmersQuery
+                .Where(f => allowedFarmerIds.Contains(f.Id) || allowedGrowerGroupIds.Contains(f.GroupId))
+                .OrderBy(f => f.FarmerName)
+                .Take(50)
+                .ToListAsync();
+
+            var results = new List<LookupItem>();
+            results.AddRange(bankMasters.Select(bm => new LookupItem { Id = bm.Id, Name = bm.AccountName, Type = "BankMaster", AccountNumber = bm.AccountNumber }));
+            results.AddRange(farmers.Select(f => new LookupItem { Id = f.Id, Name = f.FarmerName, Type = "Farmer", AccountNumber = f.FarmerCode })); // Assuming FarmerCode
+
+            return results.OrderBy(r => r.Name).Take(100).ToList();
+        }
+        else
+        {
+            // GLOBAL SEARCH (No Profile Selected) - Fallback to previous logic (fetch then filter)
+            
+            var bankMastersQuery = context.BankMasters.Where(bm => bm.IsActive);
+            var farmersQuery = context.Farmers.Where(f => f.IsActive);
+
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                bankMastersQuery = bankMastersQuery.Where(bm => bm.AccountName.Contains(searchTerm));
+                farmersQuery = farmersQuery.Where(f => f.FarmerName.Contains(searchTerm));
+            }
+
+            var bankMasters = await bankMastersQuery.OrderBy(bm => bm.AccountName).Take(200).ToListAsync();
+            var farmers = await farmersQuery.OrderBy(f => f.FarmerName).Take(200).ToListAsync();
+
+            var results = new List<LookupItem>();
+
+            results.AddRange(bankMasters
+                .Where(bm => IsAllowed("BankMaster", bm.Id, "SubGroupLedger", bm.GroupId))
+                .Select(bm => new LookupItem { Id = bm.Id, Name = bm.AccountName, Type = "BankMaster", AccountNumber = bm.AccountNumber }));
+
+            results.AddRange(farmers
+                .Where(f => IsAllowed("Farmer", f.Id, "GrowerGroup", f.GroupId))
+                .Select(f => new LookupItem { Id = f.Id, Name = f.FarmerName, Type = "Farmer", AccountNumber = f.FarmerCode }));
+
+            return results.OrderBy(r => r.Name).Take(100).ToList();
+        }
     }
 
     private List<DebitNoteDetail> GetDetailsFromForm(IFormCollection form)
@@ -574,6 +559,16 @@ public class DebitNoteService : IDebitNoteService
             .Where(e => e.TransactionType == "Global" || e.TransactionType == "DebitNote") 
             .OrderBy(e => e.AccountName)
             .Select(e => new LookupItem { Id = e.Id, Name = e.AccountName })
+            .ToListAsync();
+    }
+
+    public async Task<IEnumerable<string>> GetUnitNamesAsync()
+    {
+        return await _context.UnitMasters
+            .OrderBy(u => u.UnitName)
+            .Select(u => u.UnitName ?? "")
+            .Where(u => !string.IsNullOrEmpty(u))
+            .Distinct()
             .ToListAsync();
     }
 }

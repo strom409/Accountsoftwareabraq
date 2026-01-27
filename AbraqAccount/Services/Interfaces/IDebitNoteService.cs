@@ -21,5 +21,6 @@ public interface IDebitNoteService
     Task PopulateAccountNamesAsync(IEnumerable<DebitNote> notes);
     Task<int?> GetEntryProfileIdAsync(int creditAccountId, string creditType, int debitAccountId, string debitType);
     Task<IEnumerable<LookupItem>> GetEntryProfilesAsync();
+    Task<IEnumerable<string>> GetUnitNamesAsync();
 }
 
