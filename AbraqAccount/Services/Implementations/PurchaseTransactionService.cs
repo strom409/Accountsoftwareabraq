@@ -201,7 +201,7 @@ public class PurchaseTransactionService : IPurchaseTransactionService
 
         if (!string.IsNullOrEmpty(receiptNo)) query = query.Where(p => p.ReceiptNo.Contains(receiptNo));
         if (!string.IsNullOrEmpty(poNumber)) query = query.Where(p => p.PONumber.Contains(poNumber));
-        if (!string.IsNullOrEmpty(vendorName)) query = query.Where(p => p.Vendor != null && p.Vendor.VendorName.Contains(vendorName));
+        if (!string.IsNullOrEmpty(vendorName)) query = query.Where(p => p.Vendor != null && p.Vendor.AccountName.Contains(vendorName));
         if (!string.IsNullOrEmpty(status)) query = query.Where(p => p.Status == status);
         if (fromDate.HasValue) query = query.Where(p => p.ReceivedDate >= fromDate.Value);
         if (toDate.HasValue) query = query.Where(p => p.ReceivedDate <= toDate.Value);
@@ -289,10 +289,22 @@ public class PurchaseTransactionService : IPurchaseTransactionService
 
     public async Task LoadReceiveDropdownsAsync(dynamic viewBag)
     {
-        var vendors = await _context.Vendors
-            .Where(v => v.IsActive)
-            .OrderBy(v => v.VendorName)
-            .Select(v => new { id = v.Id, name = v.VendorName })
+        var vendors = await _context.BankMasters
+            .Include(b => b.Group)
+                .ThenInclude(g => g.MasterGroup)
+            .Include(b => b.Group)
+                .ThenInclude(g => g.MasterSubGroup)
+            .Where(b => b.IsActive && b.Group != null && (
+                b.Group.Name.Contains("Vendor") || 
+                b.Group.Name.Contains("Vender") || 
+                b.Group.Name.Contains("Creditor") || 
+                b.Group.Name.Contains("Supplier") || 
+                b.Group.Name.Contains("Sundry") ||
+                (b.Group.MasterSubGroup != null && (b.Group.MasterSubGroup.Name.Contains("Vendor") || b.Group.MasterSubGroup.Name.Contains("Vender") || b.Group.MasterSubGroup.Name.Contains("Creditor"))) ||
+                (b.Group.MasterGroup != null && (b.Group.MasterGroup.Name.Contains("Vendor") || b.Group.MasterGroup.Name.Contains("Vender") || b.Group.MasterGroup.Name.Contains("Creditor")))
+            ))
+            .OrderBy(b => b.AccountName)
+            .Select(v => new { id = v.Id, name = v.AccountName })
             .ToListAsync();
 
         viewBag.Vendors = new SelectList(vendors, "id", "name");
@@ -315,12 +327,27 @@ public class PurchaseTransactionService : IPurchaseTransactionService
 
     public async Task<IEnumerable<LookupItem>> GetVendorsAsync(string? searchTerm)
     {
-        var query = _context.Vendors.Where(v => v.IsActive).AsQueryable();
-        if (!string.IsNullOrEmpty(searchTerm)) query = query.Where(v => v.VendorName.Contains(searchTerm));
+        var query = _context.BankMasters
+            .Include(b => b.Group)
+                .ThenInclude(g => g.MasterGroup)
+            .Include(b => b.Group)
+                .ThenInclude(g => g.MasterSubGroup)
+            .Where(b => b.IsActive && b.Group != null && (
+                b.Group.Name.Contains("Vendor") || 
+                b.Group.Name.Contains("Vender") || 
+                b.Group.Name.Contains("Creditor") || 
+                b.Group.Name.Contains("Supplier") || 
+                b.Group.Name.Contains("Sundry") ||
+                (b.Group.MasterSubGroup != null && (b.Group.MasterSubGroup.Name.Contains("Vendor") || b.Group.MasterSubGroup.Name.Contains("Vender") || b.Group.MasterSubGroup.Name.Contains("Creditor"))) ||
+                (b.Group.MasterGroup != null && (b.Group.MasterGroup.Name.Contains("Vendor") || b.Group.MasterGroup.Name.Contains("Vender") || b.Group.MasterGroup.Name.Contains("Creditor")))
+            ))
+            .AsQueryable();
+
+        if (!string.IsNullOrEmpty(searchTerm)) query = query.Where(v => v.AccountName.Contains(searchTerm));
         
         return await query
-            .OrderBy(v => v.VendorName)
-            .Select(v => new LookupItem { Id = v.Id, Name = v.VendorName })
+            .OrderBy(v => v.AccountName)
+            .Select(v => new LookupItem { Id = v.Id, Name = v.AccountName })
             .Take(50)
             .ToListAsync();
     }

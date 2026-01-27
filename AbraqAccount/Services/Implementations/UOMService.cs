@@ -78,6 +78,32 @@ public class UOMService : IUOMService
         }
     }
 
+    public async Task<bool> ApproveUOMAsync(int id, string username)
+    {
+        try
+        {
+            var uom = await _context.UOMs.FindAsync(id);
+            if (uom == null) return false;
+
+            uom.IsApproved = true;
+            await _context.SaveChangesAsync();
+
+            _context.UOMHistories.Add(new UOMHistory
+            {
+                UOMId = uom.Id,
+                Action = "Approve",
+                User = username,
+                Remarks = $"Approved UOM: {uom.UOMName}"
+            });
+            await _context.SaveChangesAsync();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public async Task<bool> DeleteUOMAsync(int id)
     {
         try

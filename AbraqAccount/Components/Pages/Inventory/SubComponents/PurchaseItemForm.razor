@@ -63,7 +63,24 @@
             </div>
 
             <div class="row g-3 section-row">
-                <!-- Row 1: Group & Optional Billing Name -->
+                <!-- Group 1: Identity & Vendor -->
+                @if (model.InventoryType == "Packing Inventory")
+                {
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold text-primary">Vendor <span class="text-danger">*</span></label>
+                        <select @bind="model.VendorId" class="form-select form-select-sm border-primary-subtle shadow-sm">
+                            <option value="">Select Vendor</option>
+                            @if (vendorOptions != null)
+                            {
+                                @foreach (var opt in vendorOptions)
+                                {
+                                    <option value="@opt.Value">@opt.Text</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                }
+
                 <div class="col-md-6">
                     <label class="form-label small fw-bold">Inventory Item Group <span class="text-danger">*</span></label>
                     <select @bind="model.PurchaseItemGroupId" class="form-select form-select-sm">
@@ -77,6 +94,12 @@
                         }
                     </select>
                 </div>
+
+                <!-- Group 2: Naming -->
+                <div class="@(model.InventoryType == "Packing Inventory" ? "col-md-6" : "col-md-12")">
+                    <label class="form-label small fw-bold">Inventory Item Name <span class="text-danger">*</span></label>
+                    <input type="text" @bind="model.ItemName" class="form-control form-control-sm" placeholder="Enter Item Name" />
+                </div>
                 
                 @if (model.InventoryType == "Packing Inventory")
                 {
@@ -85,36 +108,38 @@
                         <input type="text" @bind="model.BillingName" class="form-control form-control-sm" placeholder="Search by Billing Name" />
                     </div>
                 }
-                else 
-                {
-                    <div class="col-md-6">
-                        <label class="form-label small fw-bold">Inventory Item Name <span class="text-danger">*</span></label>
-                        <input type="text" @bind="model.ItemName" class="form-control form-control-sm" placeholder="Enter Item Name" />
-                    </div>
-                }
 
-                <!-- Row 2: Name & UOM for Packing, or UOM & Costing for Storage -->
+                <!-- Group 3: Specs & Status -->
+                <div class="col-md-6">
+                    <label class="form-label small fw-bold">UOM <span class="text-danger">*</span></label>
+                    <select @bind="model.UOM" class="form-select form-select-sm">
+                        <option value="">Select UOM</option>
+                        @if (uomOptions != null)
+                        {
+                            @foreach (var opt in uomOptions)
+                            {
+                                <option value="@opt.Value">@opt.Text</option>
+                            }
+                        }
+                    </select>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label small fw-bold d-block">Status <span class="text-danger">*</span></label>
+                    <div class="d-flex gap-3 mt-1">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="statusRadio" id="statusActive" checked="@model.IsActive" @onclick="() => model.IsActive = true">
+                            <label class="form-check-label small" for="statusActive">Active</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="statusRadio" id="statusInactive" checked="@(!model.IsActive)" @onclick="() => model.IsActive = false">
+                            <label class="form-check-label small" for="statusInactive">Inactive</label>
+                        </div>
+                    </div>
+                </div>
+
                 @if (model.InventoryType == "Packing Inventory")
                 {
-                    <div class="col-md-6">
-                        <label class="form-label small fw-bold">Inventory Item Name <span class="text-danger">*</span></label>
-                        <input type="text" @bind="model.ItemName" class="form-control form-control-sm" placeholder="Enter Item Name" />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label small fw-bold">UOM <span class="text-danger">*</span></label>
-                        <select @bind="model.UOM" class="form-select form-select-sm">
-                            <option value="">Select UOM</option>
-                            @if (uomOptions != null)
-                            {
-                                @foreach (var opt in uomOptions)
-                                {
-                                    <option value="@opt.Value">@opt.Text</option>
-                                }
-                            }
-                        </select>
-                    </div>
-
-                    <!-- Row 3: Min/Max Stock for Packing -->
                     <div class="col-md-6">
                         <label class="form-label small fw-bold">Minimum Stock <span class="text-danger">*</span></label>
                         <input type="number" step="0.01" @bind="model.MinimumStock" class="form-control form-control-sm" placeholder="Enter Minimum Stock Qty" />
@@ -124,24 +149,8 @@
                         <input type="number" step="0.01" @bind="model.MaximumStock" class="form-control form-control-sm" placeholder="Enter maximum Stock Qty" />
                     </div>
                 }
-                else 
-                {
-                    <div class="col-md-6">
-                        <label class="form-label small fw-bold">UOM <span class="text-danger">*</span></label>
-                        <select @bind="model.UOM" class="form-select form-select-sm">
-                            <option value="">Select UOM</option>
-                            @if (uomOptions != null)
-                            {
-                                @foreach (var opt in uomOptions)
-                                {
-                                    <option value="@opt.Value">@opt.Text</option>
-                                }
-                            }
-                        </select>
-                    </div>
-                }
 
-                <!-- Row: Costing & GST (Common) -->
+                <!-- Group 4: Finance -->
                 <div class="col-md-6">
                     <label class="form-label small fw-bold">Purchase Costing Per Nos. <span class="text-danger">*</span></label>
                     <input type="number" step="0.01" @bind="model.PurchaseCostingPerNos" class="form-control form-control-sm" placeholder="Enter Actual Cost Per Nos." />
@@ -167,20 +176,6 @@
                         }
                     </select>
                 </div>
-
-                <div class="col-md-6">
-                    <label class="form-label small fw-bold d-block">Status <span class="text-danger">*</span></label>
-                    <div class="d-flex gap-3 mt-1">
-                        <div class="form-check">
-                            <input class="form-check-input" type="radio" name="statusRadio" id="statusActive" checked="@model.IsActive" @onclick="() => model.IsActive = true">
-                            <label class="form-check-label small" for="statusActive">Active</label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="radio" name="statusRadio" id="statusInactive" checked="@(!model.IsActive)" @onclick="() => model.IsActive = false">
-                            <label class="form-check-label small" for="statusInactive">Inactive</label>
-                        </div>
-                    </div>
-                </div>
             </div>
 
             <div class="d-flex justify-content-end gap-2 mt-4">
@@ -198,20 +193,25 @@
     .breadcrumb-item { font-size: 0.85rem; color: #6c757d; }
     .breadcrumb-item + .breadcrumb-item::before { content: ">"; padding: 0 0.5rem; color: #adb5bd; }
 
-    .card { border-radius: 8px; }
-    .card-header .card-title { font-size: 1.1rem; font-weight: 500; }
+    .card { border-radius: 12px; border: 1px solid #e0e0e0 !important; }
+    .card-header { border-radius: 12px 12px 0 0 !important; }
+    .card-header .card-title { font-size: 1.15rem; font-weight: 600; color: #2c3e50; }
 
-    .form-label { color: #555; margin-bottom: 0.35rem; }
-    .form-control, .form-select { border-color: #ddd; }
-    .form-control:focus, .form-select:focus { border-color: #0d6efd; box-shadow: 0 0 0 0.2rem rgba(13,110,253,0.1); }
+    .form-label { color: #4a5568; margin-bottom: 0.4rem; letter-spacing: 0.01em; }
+    .form-control, .form-select { border-color: #cbd5e0; transition: all 0.2s ease; border-radius: 6px; }
+    .form-control:focus, .form-select:focus { border-color: #3182ce; box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.15); }
     
-    .section-row { background: #fff; padding: 0.5rem; }
+    .section-row { background: #f8fafc; padding: 1.5rem; border-radius: 10px; border: 1px solid #edf2f7; }
     
     /* Input height consistency */
-    .form-control-sm, .form-select-sm { height: 35px; }
+    .form-control-sm, .form-select-sm { height: 38px; font-size: 0.9rem; }
 
-    /* Custom Radio styling to match screenshot */
-    .form-check-input:checked { background-color: #0d6efd; border-color: #0d6efd; }
+    /* Custom Radio styling */
+    .form-check-input:checked { background-color: #3182ce; border-color: #3182ce; }
+    .form-check-label { cursor: pointer; color: #4a5568; }
+
+    .text-primary { color: #3182ce !important; }
+    .border-primary-subtle { border-color: #bee3f8 !important; }
 </style>
 
 @code {
@@ -220,6 +220,7 @@
     private List<PurchaseItemGroup>? itemGroups;
     private List<SelectListItem>? uomOptions;
     private List<SelectListItem>? gstOptions;
+    private List<SelectListItem>? vendorOptions;
     private bool IsEdit => Id.HasValue;
     private bool isSubmitting;
     private string? errorMessage;
@@ -232,6 +233,7 @@
         itemGroups = await PurchaseService.GetPurchaseItemGroupsAsync(null);
         uomOptions = (List<SelectListItem>)viewBag.UOMOptions;
         gstOptions = (List<SelectListItem>)viewBag.GSTOptions;
+        vendorOptions = (List<SelectListItem>)viewBag.VendorOptions;
 
         if (IsEdit)
         {

@@ -285,7 +285,7 @@ public class PackingService : IPackingService
     public async Task LoadRecipeDropdownsAsync(dynamic viewBag)
     {
         var uomList = await _context.UOMs
-            .Where(u => u.IsActive)
+            .Where(u => u.IsActive && u.IsApproved)
             .OrderBy(u => u.UOMName)
             .Select(u => new { Value = u.UOMName, Text = u.UOMName })
             .ToListAsync();

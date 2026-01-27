@@ -32,6 +32,8 @@ public class UOM
     
     public bool IsActive { get; set; } = true;
     
+    public bool IsApproved { get; set; } = false;
+    
     public bool IsInventory { get; set; } = false;
     
     public DateTime CreatedAt { get; set; } = DateTime.Now;

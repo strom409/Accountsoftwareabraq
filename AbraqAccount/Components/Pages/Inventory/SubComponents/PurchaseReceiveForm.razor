@@ -69,7 +69,7 @@
                     Placeholder="Search Vendor..." 
                     SearchFunc="TransactionService.GetVendorsAsync"
                     OnAccountSelected="OnVendorSelected"
-                    InitialValue="@model.Vendor?.VendorName" />
+                    InitialValue="@model.Vendor?.AccountName" />
             </div>
         </div>
         <div class="col-md-3">
@@ -246,7 +246,7 @@
     private void OnVendorSelected(LookupItem lookup)
     {
         model.VendorId = lookup.Id;
-        model.Vendor = new Vendor { Id = lookup.Id, VendorName = lookup.Name };
+        model.Vendor = new BankMaster { Id = lookup.Id, AccountName = lookup.Name };
         // Assuming I should fetch Vendor details to get GSTIN
         model.VendorGSTNo = "SAMPLE-GSTIN"; // Placeholder
     }

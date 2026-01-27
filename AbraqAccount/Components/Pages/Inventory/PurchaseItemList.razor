@@ -45,7 +45,8 @@
                 <table class="table table-hover align-middle mb-0 custom-table">
                     <thead class="bg-light-blue py-2">
                         <tr>
-                            <th class="ps-4">Inventory Item Code <i class="bi bi-arrow-down-up ms-1 small opacity-50"></i></th>
+                            <th class="ps-4">Vendor <i class="bi bi-arrow-down-up ms-1 small opacity-50"></i></th>
+                            <th>Inventory Item Code <i class="bi bi-arrow-down-up ms-1 small opacity-50"></i></th>
                             <th>Inventory Item Group Name <i class="bi bi-arrow-down-up ms-1 small opacity-50"></i></th>
                             <th>Item Name <i class="bi bi-arrow-down-up ms-1 small opacity-50"></i></th>
                             <th>UOM <i class="bi bi-arrow-down-up ms-1 small opacity-50"></i></th>
@@ -58,18 +59,19 @@
                     <tbody>
                         @if (items == null)
                         {
-                            <tr><td colspan="8" class="text-center py-5"><div class="spinner-border spinner-border-sm text-primary"></div> Loading...</td></tr>
+                            <tr><td colspan="9" class="text-center py-5"><div class="spinner-border spinner-border-sm text-primary"></div> Loading...</td></tr>
                         }
                         else if (!items.Any())
                         {
-                            <tr><td colspan="8" class="text-center py-4 text-muted">No items found.</td></tr>
+                            <tr><td colspan="9" class="text-center py-4 text-muted">No items found.</td></tr>
                         }
                         else
                         {
                             @foreach (var item in items)
                             {
                                 <tr>
-                                    <td class="ps-4">@item.Code</td>
+                                    <td class="ps-4">@(item.Vendor?.AccountName ?? "N/A")</td>
+                                    <td>@item.Code</td>
                                     <td>@(item.PurchaseItemGroup?.Name ?? "N/A")</td>
                                     <td>@item.ItemName</td>
                                     <td>@item.UOM</td>

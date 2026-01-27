@@ -118,7 +118,7 @@
                             <tr>
                                 <td>@order.PODate.ToString("dd MMM yyyy")</td>
                                 <td><span class="badge bg-secondary">@order.PONumber</span></td>
-                                <td>@order.Vendor?.VendorName</td>
+                                <td>@order.Vendor?.AccountName</td>
                                 <td class="text-end">@order.POQty.ToString("N2")</td>
                                 <td class="text-end">@order.TaxAmount.ToString("N2")</td>
                                 <td class="text-end fw-bold text-primary">@order.TotalAmount.ToString("N2")</td>
