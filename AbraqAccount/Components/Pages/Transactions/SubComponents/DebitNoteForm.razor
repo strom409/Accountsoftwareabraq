@@ -171,6 +171,7 @@
 
 @code {
     [Parameter] public int? Id { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
     private DebitNote model = new() { DebitNoteDate = DateTime.Now };
     private bool IsEdit => Id.HasValue;
     private bool isSubmitting;
@@ -248,7 +249,14 @@
 
         if (result.success)
         {
-            Navigation.NavigateTo("transactions/entries?noteType=Debit");
+            if (OnSaved.HasDelegate)
+            {
+                await OnSaved.InvokeAsync();
+            }
+            else
+            {
+                Navigation.NavigateTo("transactions/entries?noteType=Debit");
+            }
         }
         else
         {
@@ -263,8 +271,15 @@
         errorMessage = null;
     }
 
-    private void Cancel()
+    private async Task Cancel()
     {
-        Navigation.NavigateTo("transactions/entries?noteType=Debit");
+        if (OnSaved.HasDelegate)
+        {
+            await OnSaved.InvokeAsync();
+        }
+        else
+        {
+            Navigation.NavigateTo("transactions/entries?noteType=Debit");
+        }
     }
 }

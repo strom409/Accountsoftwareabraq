@@ -76,8 +76,8 @@
         }
         else if (mode == "Form")
         {
-            @if (activeTab == "Debit") { <DebitNoteForm @ref="debitForm" Id="editId" /> }
-            else if (activeTab == "Credit") { <CreditNoteForm @ref="creditForm" Id="editId" /> }
+            @if (activeTab == "Debit") { <DebitNoteForm @ref="debitForm" Id="editId" OnSaved="BackToList" /> }
+            else if (activeTab == "Credit") { <CreditNoteForm @ref="creditForm" Id="editId" OnSaved="BackToList" /> }
             else if (activeTab == "Receipt") { <ReceiptEntryForm @ref="receiptForm" VoucherNo="@editVoucher" /> }
             else if (activeTab == "Payment") { <PaymentSettlementForm @ref="paymentForm" PANumber="@editVoucher" /> }
             else if (activeTab == "Journal") { <JournalEntryForm @ref="journalForm" VoucherNo="@editVoucher" /> }

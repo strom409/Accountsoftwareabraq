@@ -288,7 +288,7 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("CreditNotes");
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.Id).HasColumnName("Id");
+            entity.Property(e => e.Id).HasColumnName("Id").ValueGeneratedOnAdd();
             entity.Property(e => e.CreditNoteNo).HasColumnName("CreditNoteNo").HasMaxLength(100).IsRequired();
             entity.Property(e => e.GroupId).HasColumnName("GroupId");
             entity.Property(e => e.FarmerId).HasColumnName("FarmerId");

@@ -2,6 +2,8 @@ namespace AbraqAccount.Models;
 
 public class CreditNote
 {
+    [System.ComponentModel.DataAnnotations.Key]
+    [System.ComponentModel.DataAnnotations.Schema.DatabaseGenerated(System.ComponentModel.DataAnnotations.Schema.DatabaseGeneratedOption.Identity)]
     public int Id { get; set; }
     public string CreditNoteNo { get; set; } = string.Empty;
     

@@ -55,6 +55,16 @@ builder.Services.AddDbContext<AppDbContext>(options =>
         )
     ));
 
+builder.Services.AddDbContextFactory<AppDbContext>(options =>
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        sqlServerOptions => sqlServerOptions.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(30),
+            errorNumbersToAdd: null
+        )
+    ), lifetime: ServiceLifetime.Scoped);
+
 // Add session support
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>
@@ -83,6 +93,14 @@ try
         // Remove obsolete GeneralEntry profile
         dbContext.Database.ExecuteSqlRaw(@"
             DELETE FROM EntryForAccounts WHERE TransactionType = 'GeneralEntry' AND AccountName = 'Default'
+        ");
+
+        // Seed ExpenseEntry profile for Rules configuration
+        dbContext.Database.ExecuteSqlRaw(@"
+            IF NOT EXISTS (SELECT 1 FROM EntryForAccounts WHERE TransactionType = 'ExpenseEntry')
+            BEGIN
+                INSERT INTO EntryForAccounts (TransactionType, AccountName, CreatedAt) VALUES ('ExpenseEntry', 'null', GETDATE());
+            END
         ");
 
         // BankMasters migration

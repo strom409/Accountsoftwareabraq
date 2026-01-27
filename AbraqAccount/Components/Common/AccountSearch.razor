@@ -2,6 +2,8 @@
 @using AbraqAccount.Models
 @implements IDisposable
 
+@inject IJSRuntime JS
+
 <div class="search-container">
     @if (!string.IsNullOrEmpty(Label))
     {
@@ -9,11 +11,11 @@
     }
     <div class="search-input-wrapper">
         <input type="text" 
-               value="@SearchTerm"
-               @oninput="OnInputChanged"
+               @bind="SearchTerm"
+               @bind:event="oninput"
                placeholder="@Placeholder" 
                autocomplete="off"
-               @onfocus="() => isFocused = true"
+               @onfocus="HandleFocus"
                @onblur="HandleBlur"
                class="form-control @CssClass" />
         
@@ -43,6 +45,12 @@
                 }
             </div>
         }
+    </div>
+    
+    <!-- DEBUG OVERLAY -->
+    <div style="margin-top:5px; padding:5px; background:#fff3cd; border:1px solid #ffeeba; font-family:monospace; font-size:11px; color:#856404;">
+        <strong>DEBUG STATUS:</strong> @DebugLog <br/>
+        Type: @(SearchFunc == null ? "NULL" : "Valid") | Term: '@_searchTerm'
     </div>
 </div>
 
@@ -90,6 +98,8 @@
     [Parameter] public EventCallback<LookupItem> OnAccountSelected { get; set; }
     [Parameter] public string? InitialValue { get; set; }
     [Parameter] public string? CssClass { get; set; }
+    
+    private string DebugLog { get; set; } = "Ready"; // Debug Prop
 
     private string? _searchTerm;
     [Parameter] public string? SearchTerm 
@@ -100,16 +110,10 @@
             if (_searchTerm != value)
             {
                 _searchTerm = value;
+                DebugLog = $"Input: '{value}'"; // Log
                 RestartTimer();
             }
         } 
-    }
-
-    private void OnInputChanged(ChangeEventArgs e)
-    {
-        var val = e.Value?.ToString();
-        Console.WriteLine($"[AccountSearch] OnInputChanged: '{val}'");
-        SearchTerm = val;
     }
 
     private IEnumerable<LookupItem>? results;
@@ -125,6 +129,13 @@
         debounceTimer.AutoReset = false;
     }
 
+    private async Task HandleFocus()
+    {
+        isFocused = true;
+        // Search immediately on focus, even if term is empty
+        await PerformSearch();
+    }
+
     private void RestartTimer()
     {
         debounceTimer?.Stop();
@@ -133,29 +144,32 @@
 
     private async Task PerformSearch()
     {
-        Console.WriteLine($"[AccountSearch] PerformSearch triggered. Term: '{_searchTerm}'");
-        if (string.IsNullOrWhiteSpace(_searchTerm) || SearchFunc == null)
+        Console.WriteLine($"[AccountSearch] PerformSearch triggered for Term: '{_searchTerm}'");
+        
+        // ALLOW EMPTY SEARCH (Show Defaults)
+        // if (string.IsNullOrWhiteSpace(_searchTerm)) { ... } // REMOVED check
+
+        if (SearchFunc == null)
         {
-            Console.WriteLine("[AccountSearch] Term empty or SearchFunc null.");
-            await InvokeAsync(() => {
-                results = null;
-                isLoading = false;
-                StateHasChanged();
-            });
+            await InvokeAsync(() => { DebugLog = "ERROR: SearchFunc NULL"; StateHasChanged(); });
+            Console.WriteLine("[AccountSearch] ERROR: SearchFunc is NULL!");
             return;
         }
 
         await InvokeAsync(() => {
+            DebugLog = string.IsNullOrEmpty(_searchTerm) ? "Loading defaults..." : "Searching..."; 
             isLoading = true;
             StateHasChanged();
         });
 
         try
         {
-            Console.WriteLine("[AccountSearch] Invoking SearchFunc...");
-            var searchResults = await SearchFunc(_searchTerm);
-            Console.WriteLine($"[AccountSearch] SearchFunc returned {searchResults?.Count() ?? 0} results.");
+            var searchResults = await SearchFunc(_searchTerm ?? "");
+            
+            var count = searchResults?.Count() ?? 0;
+            
             await InvokeAsync(() => {
+                DebugLog = $"Found {count} results"; 
                 results = searchResults;
                 isLoading = false;
                 StateHasChanged();
@@ -163,9 +177,9 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[AccountSearch] ERROR in PerformSearch: {ex.Message}");
-            Console.WriteLine(ex.StackTrace);
+            Console.WriteLine($"[AccountSearch] ERROR: {ex.Message}");
             await InvokeAsync(() => {
+                DebugLog = $"ERROR: {ex.Message}";
                 isLoading = false;
                 StateHasChanged();
             });
