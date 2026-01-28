@@ -5,7 +5,7 @@
 
 <div class="form-container">
     <div class="form-section-title">
-        Journal Entry - @(IsEdit ? "Edit" : "Add")
+        Journal Entry - @(IsReadOnly ? "Details" : (IsEdit ? "Edit" : "Add"))
     </div>
 
     @if (!string.IsNullOrEmpty(errorMessage))
@@ -17,39 +17,62 @@
     <div class="row mb-4">
         <div class="col-md-3">
             <div class="form-group-custom">
-                <label>Entry Date</label>
-                <input type="date" @bind="model.EntryDate" class="form-control-custom" />
+                <label class="form-label text-muted">Entry Date</label>
+                @if (IsReadOnly)
+                {
+                    <div class="fw-bold fs-6">@model.EntryDate.ToString("dd/MM/yyyy")</div>
+                }
+                else
+                {
+                    <input type="date" @bind="model.EntryDate" class="form-control-custom" />
+                }
             </div>
         </div>
         <div class="col-md-4">
             <div class="form-group-custom">
-                <label>Entry For</label>
-                <select @onchange="OnProfileChanged" class="form-control-custom">
-                    <option value="">Select Entry Profile</option>
-                    @if (entryProfiles != null)
-                    {
-                        @foreach (var profile in entryProfiles)
+                <label class="form-label text-muted">Entry For</label>
+                @if (IsReadOnly)
+                {
+                    <div class="fw-bold fs-6">@(entryProfiles?.FirstOrDefault(p => p.Id == selectedProfileId)?.Name ?? "-")</div>
+                }
+                else
+                {
+                    <select @onchange="OnProfileChanged" class="form-control-custom">
+                        <option value="">Select Entry Profile</option>
+                        @if (entryProfiles != null)
                         {
-                            <option value="@profile.Id" selected="@(selectedProfileId == profile.Id)">@profile.Name</option>
+                            @foreach (var profile in entryProfiles)
+                            {
+                                <option value="@profile.Id" selected="@(selectedProfileId == profile.Id)">@profile.Name</option>
+                            }
                         }
-                    }
-                </select>
+                    </select>
+                }
             </div>
         </div>
         <div class="col-md-3">
             <div class="form-group-custom">
-                <label>Unit <span class="text-danger">*</span></label>
-                <select @bind="selectedUnit" class="form-control-custom">
-                    @foreach (var unit in unitList)
-                    {
-                        <option value="@unit">@unit</option>
-                    }
-                </select>
+                <label class="form-label text-muted">Unit <span class="text-danger">*</span></label>
+                @if (IsReadOnly)
+                {
+                    <div class="fw-bold fs-6">@selectedUnit</div>
+                }
+                else
+                {
+                    <select @bind="selectedUnit" class="form-control-custom">
+                        @foreach (var unit in unitList)
+                        {
+                            <option value="@unit">@unit</option>
+                        }
+                    </select>
+                }
             </div>
         </div>
     </div>
 
     <!-- Transaction Details Section -->
+    @if (!IsReadOnly)
+    {
     <div class="transaction-details-section">
         <div class="section-subtitle mb-3">Transaction Details</div>
         <div class="row mb-3">
@@ -109,6 +132,7 @@
             <button type="button" class="btn-clear-row-custom" @onclick="ClearNewEntry">Clear</button>
         </div>
     </div>
+    }
 
     <!-- Details Table -->
     <div class="details-table-section">
@@ -149,9 +173,15 @@
                                 <td>@entry.RefNo</td>
                                 <td>@entry.Narration</td>
                                 <td>
-                                    <button class="btn-delete-row" @onclick="() => RemoveEntry(entry)">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
+                                    @if (!IsReadOnly)
+                                    {
+                                        <button class="btn-edit-row me-2" @onclick="() => EditEntry(entry)" title="Edit">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
+                                        <button class="btn-delete-row" @onclick="() => RemoveEntry(entry)" title="Delete">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    }
                                 </td>
                             </tr>
                         }
@@ -170,11 +200,20 @@
     </div>
 
     <div class="form-footer-actions">
-        <button type="button" class="btn-save-custom" @onclick="SubmitForm" disabled="@(isSubmitting || !IsBalanced)">
-            @if (isSubmitting) { <span class="spinner-border spinner-border-sm me-1"></span> }
-            Save
-        </button>
-        <button type="button" class="btn-cancel-custom" @onclick="Cancel">Cancel</button>
+        @if (!IsReadOnly)
+        {
+            <button type="button" class="btn-save-custom" @onclick="SubmitForm" disabled="@(isSubmitting || !IsBalanced)">
+                @if (isSubmitting) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Save
+            </button>
+            <button type="button" class="btn-cancel-custom" @onclick="Cancel">Cancel</button>
+        }
+        else
+        {
+            <a href="transactions/entries?noteType=Journal" class="btn-cancel-custom text-decoration-none d-inline-flex align-items-center">
+                <i class="bi bi-arrow-left me-1"></i> Back to List
+            </a>
+        }
     </div>
 </div>
 
@@ -191,6 +230,7 @@
     .table-custom-bordered th { background: #f8f9fa; padding: 0.75rem; border: 1px solid #dee2e6; text-align: left; }
     .table-custom-bordered td { padding: 0.75rem; border: 1px solid #dee2e6; }
     .btn-delete-row { background: none; border: none; color: #dc3545; cursor: pointer; }
+    .btn-edit-row { background: none; border: none; color: #ffc107; cursor: pointer; }
     .form-footer-actions { display: flex; justify-content: flex-end; gap: 0.5rem; padding-top: 1.5rem; border-top: 1px solid #f0f0f0; margin-top: 2rem; }
     .btn-save-custom { background-color: #6c757d; color: white; border: none; padding: 0.5rem 2rem; border-radius: 4px; font-weight: 500; }
     .btn-cancel-custom { background-color: #e9ecef; color: #495057; border: none; padding: 0.5rem 2rem; border-radius: 4px; font-weight: 500; }
@@ -205,6 +245,7 @@
 
 @code {
     [Parameter] public string? VoucherNo { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public EventCallback OnSaved { get; set; }
     private GeneralEntryBatchModel model = new() { EntryDate = DateTime.Now };
     private List<UIEntry> uiEntries = new();
@@ -252,22 +293,45 @@
                 selectedProfileId = entries.First().EntryForId;
                 selectedUnit = entries.First().Unit ?? "Unit 1";
 
+                bool isSingleRow = entries.Count == 1;
+
                 foreach (var e in entries)
                 {
-                    bool isDebit = e.DebitAccountId != 1;
-                    uiEntries.Add(new UIEntry {
-                        Type = isDebit ? "Debit" : "Credit",
-                        AccountId = isDebit ? e.DebitAccountId : e.CreditAccountId,
-                        AccountType = isDebit ? e.DebitAccountType : e.CreditAccountType,
-                        AccountName = isDebit ? e.DebitAccountName : e.CreditAccountName,
-                        PaymentType = e.Type ?? "Cash",
-                        Debit = isDebit ? e.Amount : 0,
-                        Credit = isDebit ? 0 : e.Amount,
-                        Amount = e.Amount,
-                        RefNo = e.ReferenceNo ?? "",
-                        Narration = e.Narration ?? "",
-                        Unit = e.Unit
-                    });
+                    // Check Debit Side
+                    if (isSingleRow || e.DebitAccountId != 1)
+                    {
+                        uiEntries.Add(new UIEntry {
+                            Type = "Debit",
+                            AccountId = e.DebitAccountId,
+                            AccountType = e.DebitAccountType,
+                            AccountName = e.DebitAccountName,
+                            PaymentType = e.Type ?? "Cash",
+                            Debit = e.Amount,
+                            Credit = 0,
+                            Amount = e.Amount,
+                            RefNo = e.ReferenceNo ?? "",
+                            Narration = e.Narration ?? "",
+                            Unit = e.Unit
+                        });
+                    }
+
+                    // Check Credit Side
+                    if (isSingleRow || e.CreditAccountId != 1)
+                    {
+                        uiEntries.Add(new UIEntry {
+                            Type = "Credit",
+                            AccountId = e.CreditAccountId,
+                            AccountType = e.CreditAccountType,
+                            AccountName = e.CreditAccountName,
+                            PaymentType = e.Type ?? "Cash",
+                            Debit = 0,
+                            Credit = e.Amount,
+                            Amount = e.Amount,
+                            RefNo = e.ReferenceNo ?? "",
+                            Narration = e.Narration ?? "",
+                            Unit = e.Unit
+                        });
+                    }
                 }
             }
         }
@@ -320,6 +384,27 @@
 
     private void RemoveEntry(UIEntry entry)
     {
+        uiEntries.Remove(entry);
+    }
+
+    private void EditEntry(UIEntry entry)
+    {
+        // Set type first (logic in setter might clear fields if changed)
+        EntryType = entry.Type;
+        
+        newEntry.AccountId = entry.AccountId;
+        newEntry.AccountType = entry.AccountType;
+        newEntry.AccountName = entry.AccountName;
+        newEntry.PaymentType = entry.PaymentType;
+        newEntry.Amount = entry.Amount;
+        newEntry.RefNo = entry.RefNo;
+        newEntry.Narration = entry.Narration;
+        
+        if (!string.IsNullOrEmpty(entry.Unit) && unitList.Contains(entry.Unit))
+        {
+            selectedUnit = entry.Unit;
+        }
+
         uiEntries.Remove(entry);
     }
 

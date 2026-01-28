@@ -6,7 +6,7 @@
 
 <div class="form-container">
     <div class="form-section-title">
-        Credit Note - @(IsEdit ? "Edit" : "Add")
+        Credit Note - @(IsReadOnly ? "Details" : (IsEdit ? "Edit" : "Add"))
     </div>
 
     <EditForm Model="model" OnValidSubmit="SubmitForm">
@@ -15,53 +15,81 @@
         <div class="row mb-3">
             <div class="col-md-3">
                 <div class="form-group-custom">
-                    <label>Unit <span class="text-danger">*</span></label>
-                    <select @bind="model.Unit" class="form-control-custom">
-                        <option value="">Select</option>
-                        @foreach (var unit in unitList)
-                        {
-                            <option value="@unit">@unit</option>
-                        }
-                    </select>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="form-group-custom">
-                    <label>Entry For</label>
-                    <select @onchange="OnProfileChanged" class="form-control-custom">
-                        <option value="">Select Entry For</option>
-                        @if (entryProfiles != null)
-                        {
-                            @foreach (var profile in entryProfiles)
+                    <label class="form-label text-muted">Unit</label>
+                    @if (IsReadOnly)
+                    {
+                        <div class="fw-bold fs-6">@model.Unit</div>
+                    }
+                    else
+                    {
+                        <select @bind="model.Unit" class="form-control-custom">
+                            <option value="">Select</option>
+                            @foreach (var unit in unitList)
                             {
-                                <option value="@profile.Id" selected="@(selectedProfileId == profile.Id)">@profile.Name</option>
+                                <option value="@unit">@unit</option>
                             }
-                        }
-                    </select>
+                        </select>
+                    }
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="form-group-custom">
-                    <label>Grower Credit <span class="text-danger">*</span></label>
-                    <AbraqAccount.Components.Common.AccountSearch 
-                        Placeholder="Search Account Name" 
-                        SearchFunc='async (t) => await SearchAccounts(t, "Credit")'
-                        OnAccountSelected="(acc) => OnAccountSelected(acc, true)"
-                        InitialValue="@model.CreditAccountName"
-                        Disabled="@(selectedProfileId == null || selectedProfileId == 0)"
-                        CssClass="form-control-custom" />
+                    <label class="form-label text-muted">Entry For</label>
+                    @if (IsReadOnly)
+                    {
+                        <div class="fw-bold fs-6">@model.EntryForName</div>
+                    }
+                    else
+                    {
+                        <select @onchange="OnProfileChanged" class="form-control-custom">
+                            <option value="">Select Entry For</option>
+                            @if (entryProfiles != null)
+                            {
+                                @foreach (var profile in entryProfiles)
+                                {
+                                    <option value="@profile.Id" selected="@(selectedProfileId == profile.Id)">@profile.Name</option>
+                                }
+                            }
+                        </select>
+                    }
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="form-group-custom">
-                    <label>Grower Debit <span class="text-danger">*</span></label>
-                    <AbraqAccount.Components.Common.AccountSearch 
-                        Placeholder="Search Account Name" 
-                        SearchFunc='async (t) => await SearchAccounts(t, "Debit")'
-                        OnAccountSelected="(acc) => OnAccountSelected(acc, false)"
-                        InitialValue="@model.DebitAccountName"
-                        Disabled="@(selectedProfileId == null || selectedProfileId == 0)"
-                        CssClass="form-control-custom" />
+                    <label class="form-label text-muted">Grower Credit <span class="text-danger">*</span></label>
+                    @if (IsReadOnly)
+                    {
+                        <div class="fw-bold fs-6">@model.CreditAccountName</div>
+                    }
+                    else
+                    {
+                        <AbraqAccount.Components.Common.AccountSearch 
+                            Placeholder="Search Account Name" 
+                            SearchFunc='async (t) => await SearchAccounts(t, "Credit")'
+                            OnAccountSelected="(acc) => OnAccountSelected(acc, true)"
+                            InitialValue="@model.CreditAccountName"
+                            Disabled="@(selectedProfileId == null || selectedProfileId == 0)"
+                            CssClass="form-control-custom" />
+                    }
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-group-custom">
+                    <label class="form-label text-muted">Grower Debit <span class="text-danger">*</span></label>
+                    @if (IsReadOnly)
+                    {
+                        <div class="fw-bold fs-6">@model.DebitAccountName</div>
+                    }
+                    else
+                    {
+                        <AbraqAccount.Components.Common.AccountSearch 
+                            Placeholder="Search Account Name" 
+                            SearchFunc='async (t) => await SearchAccounts(t, "Debit")'
+                            OnAccountSelected="(acc) => OnAccountSelected(acc, false)"
+                            InitialValue="@model.DebitAccountName"
+                            Disabled="@(selectedProfileId == null || selectedProfileId == 0)"
+                            CssClass="form-control-custom" />
+                    }
                 </div>
             </div>
         </div>
@@ -69,34 +97,67 @@
         <div class="row mb-4">
             <div class="col-md-3">
                 <div class="form-group-custom">
-                    <label>Credit Note Date</label>
-                    <input type="date" @bind="model.CreditNoteDate" class="form-control-custom" />
+                    <label class="form-label text-muted">Credit Note Date</label>
+                    @if (IsReadOnly)
+                    {
+                        <div class="fw-bold fs-6">@model.CreditNoteDate.ToString("dd/MM/yyyy")</div>
+                    }
+                    else
+                    {
+                        <input type="date" @bind="model.CreditNoteDate" class="form-control-custom" />
+                    }
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="form-group-custom">
-                    <label>Amount <span class="text-danger">*</span></label>
-                    <input type="number" step="0.01" @bind="model.Amount" class="form-control-custom" placeholder="Enter Amount" />
+                    <label class="form-label text-muted">Amount <span class="text-danger">*</span></label>
+                    @if (IsReadOnly)
+                    {
+                        <div class="fw-bold fs-6 text-primary">@model.Amount?.ToString("N2")</div>
+                    }
+                    else
+                    {
+                        <input type="number" step="0.01" @bind="model.Amount" class="form-control-custom" placeholder="Enter Amount" />
+                    }
                 </div>
             </div>
             <div class="col-md-6">
                 <div class="form-group-custom">
-                    <label>Narration</label>
-                    <textarea @bind="model.Remarks" class="form-control-custom" rows="1" placeholder="Enter Narration"></textarea>
+                    <label class="form-label text-muted">Narration</label>
+                    @if (IsReadOnly)
+                    {
+                        <div class="fw-bold fs-6">@(string.IsNullOrEmpty(model.Remarks) ? "-" : model.Remarks)</div>
+                    }
+                    else
+                    {
+                        <textarea @bind="model.Remarks" class="form-control-custom" rows="1" placeholder="Enter Narration"></textarea>
+                    }
                 </div>
             </div>
         </div>
 
+        @if (!IsReadOnly)
+        {
         <div class="d-flex justify-content-end mb-4">
             <button type="button" class="btn-clear-custom" @onclick="ClearForm">Clear</button>
         </div>
+        }
 
         <div class="form-footer-actions">
-            <button type="button" class="btn-save-custom" @onclick="SubmitForm" disabled="@isSubmitting">
-                @if (isSubmitting) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                Save
-            </button>
-            <button type="button" class="btn-cancel-custom" @onclick="Cancel">Cancel</button>
+            @if (!IsReadOnly)
+            {
+                <button type="button" class="btn-save-custom" @onclick="SubmitForm" disabled="@isSubmitting">
+                    @if (isSubmitting) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    Save
+                </button>
+                <button type="button" class="btn-cancel-custom" @onclick="Cancel">Cancel</button>
+            }
+            else
+            {
+                <a href="transactions/entries?noteType=Credit" class="btn-cancel-custom text-decoration-none d-inline-flex align-items-center">
+                    <i class="bi bi-arrow-left me-1"></i> Back to List
+                </a>
+            }
         </div>
     </EditForm>
 </div>
@@ -175,6 +236,7 @@
 @code {
     [Parameter] public int? Id { get; set; }
     [Parameter] public string? CreditNoteNo { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public EventCallback OnSaved { get; set; }
     private CreditNote model = new() { CreditNoteDate = DateTime.Now, Unit = "UNIT-1" };
     private bool IsEdit => Id.HasValue;

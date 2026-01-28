@@ -1,0 +1,133 @@
+@typeparam TItem
+@typeparam TValue
+
+<div class="column-filter d-flex align-items-center justify-content-between">
+    <span class="me-2">@Title</span>
+    <div class="position-relative">
+        <button class="btn btn-sm btn-link p-0 text-muted filter-icon" @onclick="ToggleDropdown">
+            <i class="bi @(IsActive ? "bi-funnel-fill text-primary" : "bi-funnel")"></i>
+        </button>
+
+        @if (isOpen)
+        {
+            <div class="filter-dropdown shadow rounded p-2" 
+                 style="position: absolute; top: 100%; @(Align == "left" ? "left: 0;" : "right: 0;") z-index: 2000; background: white; width: 250px; border: 1px solid #ddd;">
+                <div class="mb-2">
+                    <input type="text" class="form-control form-control-sm" placeholder="Search..." @bind="searchText" @bind:event="oninput" />
+                </div>
+                
+                <div class="filter-options mb-2" style="max-height: 200px; overflow-y: auto;">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" checked="@areAllSelected" @onchange="ToggleSelectAll" id="chk-all-@Title" />
+                        <label class="form-check-label small" for="chk-all-@Title">Select All</label>
+                    </div>
+                    <hr class="my-1" />
+                    @if (FilteredOptions.Any())
+                    {
+                        @foreach (var val in FilteredOptions)
+                        {
+                            var strVal = val?.ToString() ?? "(Empty)";
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" checked="@selectedValues.Contains(val)" @onchange="@(() => ToggleValue(val))" id="chk-@Title-@strVal" />
+                                <label class="form-check-label small text-truncate d-block" for="chk-@Title-@strVal" title="@strVal">@strVal</label>
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="text-muted small text-center py-2">No items found</div>
+                    }
+                </div>
+
+                <div class="d-flex justify-content-between gap-2">
+                    <button class="btn btn-xs btn-link text-decoration-none p-0" @onclick="SelectAll">Select All</button>
+                    <button class="btn btn-xs btn-link text-decoration-none p-0 text-danger" @onclick="ClearAll">Clear All</button>
+                </div>
+            </div>
+            <div class="dropdown-backdrop" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1040;" @onclick="CloseDropdown"></div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public IEnumerable<TItem> Items { get; set; } = Enumerable.Empty<TItem>();
+    [Parameter] public Func<TItem, TValue> Property { get; set; } = default!;
+    [Parameter] public EventCallback<List<TValue>> OnFilter { get; set; }
+    [Parameter] public string Align { get; set; } = "right"; // "left" or "right"
+
+    private bool isOpen = false;
+    private HashSet<TValue> selectedValues = new();
+    private HashSet<TValue> allValues = new();
+    private string searchText = "";
+
+    private bool IsActive => selectedValues.Count < allValues.Count && allValues.Count > 0;
+
+    private IEnumerable<TValue> FilteredOptions => allValues
+        .Where(v => string.IsNullOrEmpty(searchText) || (v?.ToString()?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false))
+        .OrderBy(v => v);
+
+    private bool areAllSelected => FilteredOptions.Any() && FilteredOptions.All(v => selectedValues.Contains(v));
+
+    protected override void OnParametersSet()
+    {
+        if (Items != null)
+        {
+            var newValues = Items.Select(Property).Distinct().Where(x => x != null).ToHashSet();
+            if (!newValues.SetEquals(allValues))
+            {
+                allValues = newValues;
+                // If this is first load, select all. If reload/paging, maybe keep selection? 
+                // For simplicity, if we haven't filtered yet, select all unique values.
+                if (selectedValues.Count == 0) 
+                {
+                    selectedValues = new HashSet<TValue>(allValues);
+                }
+            }
+        }
+    }
+
+    private void ToggleDropdown() => isOpen = !isOpen;
+    private void CloseDropdown() => isOpen = false;
+
+    private async Task ToggleValue(TValue val)
+    {
+        if (selectedValues.Contains(val))
+            selectedValues.Remove(val);
+        else
+            selectedValues.Add(val);
+
+        await ApplyFilter();
+    }
+
+    private async Task ToggleSelectAll(ChangeEventArgs e)
+    {
+        if ((bool)(e.Value ?? false))
+            await SelectAll();
+        else
+            await ClearAll();
+            
+        // await ApplyFilter(); // handled in Select/Clear
+    }
+
+    private async Task SelectAll()
+    {
+        // Select all filtered options (not just visible if searched)
+        // Usually Select All means select all available values matching search? 
+        // Or all values period?
+        // Let's assume select all currently filtered options.
+        foreach (var v in FilteredOptions) selectedValues.Add(v);
+        await ApplyFilter();
+    }
+
+    private async Task ClearAll()
+    {
+        selectedValues.Clear();
+        await ApplyFilter();
+    }
+
+    private async Task ApplyFilter()
+    {
+        await OnFilter.InvokeAsync(selectedValues.ToList());
+    }
+}

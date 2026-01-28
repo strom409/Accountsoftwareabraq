@@ -1,0 +1,14 @@
+@page "/grower-book/details/{*VoucherNo}"
+@using AbraqAccount.Components.Pages.Transactions.SubComponents
+
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <GrowerBookForm VoucherNo="@VoucherNo" IsReadOnly="true" />
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? VoucherNo { get; set; }
+}

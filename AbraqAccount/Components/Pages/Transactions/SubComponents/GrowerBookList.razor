@@ -2,6 +2,7 @@
 @using AbraqAccount.Services.Interfaces
 @inject IGeneralEntryService GeneralEntryService
 @inject IJSRuntime JS
+@using AbraqAccount.Components.Common
 
 <div class="filter-section">
     <div class="filter-group">
@@ -37,13 +38,27 @@
         <table class="table-custom">
             <thead>
                 <tr>
-                    <th>Book No</th>
-                    <th>Date</th>
-                    <th>Credit</th>
-                    <th>Debit</th>
-                    <th>Amount</th>
-                    <th>Entry For</th>
-                    <th>Status</th>
+                    <th>
+                        <ColumnFilter Title="Book No" TItem="GeneralEntry" TValue="string" Items="originalEntries" Property="@(x => x.VoucherNo)" OnFilter="@(v => HandleColumnFilter("VoucherNo", v))" Align="left" />
+                    </th>
+                    <th>
+                        <ColumnFilter Title="Date" TItem="GeneralEntry" TValue="string" Items="originalEntries" Property="@(x => x.EntryDate.ToString("dd/MM/yyyy"))" OnFilter="@(v => HandleColumnFilter("Date", v))" Align="left" />
+                    </th>
+                    <th>
+                        <ColumnFilter Title="Credit" TItem="GeneralEntry" TValue="string" Items="originalEntries" Property="@(x => x.CreditAccountName)" OnFilter="@(v => HandleColumnFilter("CreditAccountName", v))" />
+                    </th>
+                    <th>
+                        <ColumnFilter Title="Debit" TItem="GeneralEntry" TValue="string" Items="originalEntries" Property="@(x => x.DebitAccountName)" OnFilter="@(v => HandleColumnFilter("DebitAccountName", v))" />
+                    </th>
+                    <th>
+                        <ColumnFilter Title="Amount" TItem="GeneralEntry" TValue="decimal" Items="originalEntries" Property="@(x => x.Amount)" OnFilter="@(v => HandleColumnFilter("Amount", v))" />
+                    </th>
+                    <th>
+                        <ColumnFilter Title="Entry For" TItem="GeneralEntry" TValue="string" Items="originalEntries" Property="@(x => x.EntryForName)" OnFilter="@(v => HandleColumnFilter("EntryForName", v))" />
+                    </th>
+                    <th>
+                        <ColumnFilter Title="Status" TItem="GeneralEntry" TValue="string" Items="originalEntries" Property="@(x => x.Status)" OnFilter="@(v => HandleColumnFilter("Status", v))" />
+                    </th>
                     <th>Action</th>
                 </tr>
             </thead>
@@ -72,6 +87,9 @@
                             </td>
                             <td>
                                 <div class="action-icons">
+                                    <NavLink href="@($"grower-book/details/{item.VoucherNo}")" class="action-icon view-icon" title="View">
+                                        <i class="bi bi-eye"></i>
+                                    </NavLink>
                                     @if (item.Status != "Approved")
                                     {
                                         <button class="action-icon edit-icon" type="button" @onclick="() => OnEdit.InvokeAsync(item.VoucherNo)" title="Edit">
@@ -136,7 +154,7 @@
     .btn-clear { background-color: #e9ecef; color: #333; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
 
     .table-card { background: white; border: 1px solid #e0e0e0; border-radius: 4px; padding: 1.5rem; }
-    .table-wrapper { overflow-x: auto; }
+    .table-wrapper { overflow-x: auto; min-height: 400px; }
     .table-custom { width: 100%; border-collapse: collapse; }
     .table-custom th { padding: 0.75rem; text-align: left; background: #f8f9fa; border-bottom: 2px solid #dee2e6; }
     .table-custom td { padding: 0.75rem; border-bottom: 1px solid #dee2e6; }
@@ -185,13 +203,64 @@
         await LoadData();
     }
 
+    private void FilterLocalData()
+    {
+        if (originalEntries == null) return;
+        
+        var query = originalEntries.AsEnumerable();
+
+        foreach(var kvp in activeColumnFilters)
+        {
+             var col = kvp.Key;
+             var filterValues = kvp.Value as System.Collections.IEnumerable;
+             if (filterValues == null) continue;
+             
+             query = query.Where(item => {
+                 object? val = col switch {
+                     "VoucherNo" => item.VoucherNo,
+                     "Date" => item.EntryDate.ToString("dd/MM/yyyy"),
+                     "CreditAccountName" => item.CreditAccountName,
+                     "DebitAccountName" => item.DebitAccountName,
+                     "Amount" => item.Amount,
+                     "EntryForName" => item.EntryForName,
+                     "Status" => item.Status,
+                     _ => null
+                 };
+                 
+                 foreach(var f in filterValues) {
+                     if (object.Equals(f, val)) return true;
+                 }
+                 return false;
+             });
+        }
+        
+        entries = query.ToList();
+    }
+
+    private Dictionary<string, object> activeColumnFilters = new();
+
+    private void HandleColumnFilter<T>(string column, List<T> selectedValues)
+    {
+        if (selectedValues == null || !selectedValues.Any()) 
+            activeColumnFilters.Remove(column);
+        else 
+            activeColumnFilters[column] = selectedValues;
+
+        FilterLocalData();
+    }
+
+    private List<GeneralEntry> originalEntries = new();
+
     private async Task LoadData()
     {
         var result = await GeneralEntryService.GetGrowerBookEntriesAsync(
             fromDate, toDate, filterBookNo, null, null, filterStatus, currentPage, pageSize
         );
-        entries = result.entries;
+        originalEntries = result.entries ?? new List<GeneralEntry>();
+        entries = originalEntries.ToList();
         totalCount = result.totalCount;
+        
+        if (activeColumnFilters.Any()) FilterLocalData();
     }
 
     private async Task ClearFilters()
