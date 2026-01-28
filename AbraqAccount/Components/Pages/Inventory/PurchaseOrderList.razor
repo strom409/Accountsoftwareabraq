@@ -82,8 +82,7 @@
                                 <td>@order.PODate.ToString("dd MMM yyyy")</td>
                                 <td><span class="badge bg-secondary">@order.PONumber</span></td>
                                 <td>
-                                    <div class="fw-bold">@(order.Vendor?.VendorName ?? "N/A")</div>
-                                    <small class="text-muted">@(order.Vendor?.VendorCode ?? "")</small>
+                                    <div class="fw-bold">@(order.Vendor?.AccountName ?? "N/A")</div>
                                 </td>
                                 <td class="text-end">@order.POQty.ToString("N2")</td>
                                 <td class="text-end fw-bold text-primary">@order.TotalAmount.ToString("N2")</td>

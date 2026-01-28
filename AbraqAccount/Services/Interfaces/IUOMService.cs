@@ -8,6 +8,7 @@ public interface IUOMService
     Task<UOM?> GetUOMByIdAsync(int id);
     Task<bool> CreateUOMAsync(UOM uom, string username);
     Task<bool> UpdateUOMAsync(UOM uom, string username);
+    Task<bool> ApproveUOMAsync(int id, string username);
     Task<bool> DeleteUOMAsync(int id);
     Task<List<UOMHistory>> GetUOMHistoryAsync(int uomId);
 }

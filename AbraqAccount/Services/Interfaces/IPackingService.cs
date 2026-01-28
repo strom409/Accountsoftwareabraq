@@ -9,11 +9,12 @@ public interface IPackingService
     // Packing Recipe
     Task<List<PackingRecipe>> GetPackingRecipesAsync(string? searchTerm);
     Task<(bool success, string message)> CreatePackingRecipeAsync(PackingRecipe model, IFormCollection form);
-    Task<PackingRecipe?> GetPackingRecipeByIdAsync(int id);
-    Task<(bool success, string message)> UpdatePackingRecipeAsync(int id, PackingRecipe model, List<PackingRecipeMaterial> materials);
+    Task<PackingRecipe?> GetPackingRecipeByIdAsync(long id);
+    Task<(bool success, string message)> UpdatePackingRecipeAsync(long id, PackingRecipe model, List<PackingRecipeMaterial> materials);
+    Task<(bool success, string message)> SavePackingRecipeAsync(PackingRecipe model, List<PackingRecipeMaterial> materials);
     Task<IEnumerable<LookupItem>> GetPackingMaterialsAsync(string? searchTerm); // For AJAX
     Task<string> GetMaterialUOMAsync(int id);
-    Task<object?> GetSpecialRateFormDataAsync(int id);
+    Task<object?> GetSpecialRateFormDataAsync(long id);
     Task<(bool success, string message)> SaveSpecialRateAsync(SavePackingRateRequest request);
     Task LoadRecipeDropdownsAsync(dynamic viewBag);
     

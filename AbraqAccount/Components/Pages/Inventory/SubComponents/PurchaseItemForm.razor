@@ -1,161 +1,239 @@
 @using AbraqAccount.Models
 @using AbraqAccount.Services.Interfaces
+@using Microsoft.AspNetCore.Mvc.Rendering
 @inject IPurchaseMasterService PurchaseService
 @inject NavigationManager Navigation
 
-<div class="form-card">
-    <div class="form-header">
-        <h3>@(IsEdit ? "Edit" : "Add") Purchase Item</h3>
-        <div class="header-actions">
-            @if (IsEdit)
+<div class="content-header shadow-sm mb-4">
+    <div class="container-fluid">
+        <div class="row align-items-center">
+            <div class="col-sm-6">
+                <h1 class="m-0 text-dark">Purchase Item <small class="text-muted fw-light" style="font-size: 0.6em;">Control panel</small></h1>
+            </div>
+            <div class="col-sm-6 text-end">
+                <nav aria-label="breadcrumb" class="d-inline-block">
+                    <ol class="breadcrumb bg-transparent p-0 m-0">
+                        <li class="breadcrumb-item"><i class="bi bi-house-door me-1"></i>Home</li>
+                        <li class="breadcrumb-item active">Purchase Item</li>
+                    </ol>
+                </nav>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container-fluid">
+    <div class="card shadow-sm border-0 rounded-3 mb-4">
+        <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0 text-primary">Purchase Item <small class="text-muted fw-normal">- @(IsEdit ? "Edit" : "Add")</small></h5>
+            <div class="d-flex gap-2">
+                <button class="btn btn-dark btn-sm px-3 shadow-sm" style="border-radius: 4px;" @onclick="SubmitForm" disabled="@isSubmitting">
+                    @(isSubmitting ? "..." : "Save")
+                </button>
+                <button class="btn btn-secondary btn-sm px-3 shadow-sm" style="border-radius: 4px;" @onclick="Cancel">
+                    <i class="bi bi-arrow-left"></i>
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            @if (!string.IsNullOrEmpty(errorMessage))
             {
-                <span class="badge bg-info me-3">Code: @model.Code</span>
+                <div class="alert alert-danger mb-4">@errorMessage</div>
             }
-            <button class="btn btn-primary" @onclick="SubmitForm" disabled="@isSubmitting">
-                @if (isSubmitting)
-                {
-                    <span class="spinner-border spinner-border-sm" role="status"></span>
-                }
-                Save
-            </button>
-            <button class="btn btn-secondary" @onclick="Cancel">Cancel</button>
-        </div>
-    </div>
 
-    @if (!string.IsNullOrEmpty(errorMessage))
-    {
-        <div class="alert alert-danger">@errorMessage</div>
-    }
-
-    <div class="row g-3">
-        <div class="col-md-6">
-            <div class="form-group mb-3">
-                <label class="form-label">Inventory Type</label>
-                <select @bind="model.InventoryType" class="form-select">
-                    <option value="Packing Inventory">Packing Inventory</option>
-                    <option value="Storage Inventory">Storage Inventory</option>
-                </select>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="form-group mb-3">
-                <label class="form-label text-danger">Inventory Item Group *</label>
-                <select @bind="model.PurchaseItemGroupId" class="form-select">
-                    <option value="0">--- Select Item Group ---</option>
-                    @if (itemGroups != null)
-                    {
-                        @foreach (var group in itemGroups)
-                        {
-                            <option value="@group.Id">@group.Name</option>
-                        }
-                    }
-                </select>
-            </div>
-        </div>
-    </div>
-
-    <div class="row g-3">
-        <div class="col-md-6">
-            <div class="form-group mb-3">
-                <label class="form-label text-danger">Inventory Item Name *</label>
-                <input type="text" @bind="model.ItemName" class="form-control" placeholder="Item Name" />
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="form-group mb-3">
-                <label class="form-label">Inventory Billing Name</label>
-                <input type="text" @bind="model.BillingName" class="form-control" placeholder="Billing Name" />
-            </div>
-        </div>
-    </div>
-
-    <div class="row g-3">
-        <div class="col-md-4">
-            <div class="form-group mb-3">
-                <label class="form-label text-danger">UOM *</label>
-                <select @bind="model.UOM" class="form-select">
-                    <option value="">--- Select UOM ---</option>
-                    <option value="Pieces">Pieces</option>
-                    <option value="Number">Number</option>
-                    <option value="Kg">Kg</option>
-                    <option value="Gram">Gram</option>
-                    <option value="Liter">Liter</option>
-                    <option value="Meter">Meter</option>
-                    <option value="Box">Box</option>
-                    <option value="Carton">Carton</option>
-                </select>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="form-group mb-3">
-                <label class="form-label">Minimum Stock</label>
-                <input type="number" step="0.01" @bind="model.MinimumStock" class="form-control text-end" />
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="form-group mb-3">
-                <label class="form-label">Maximum Stock</label>
-                <input type="number" step="0.01" @bind="model.MaximumStock" class="form-control text-end" />
-            </div>
-        </div>
-    </div>
-
-    <div class="row g-3">
-        <div class="col-md-4">
-            <div class="form-group mb-3">
-                <label class="form-label text-danger">Purchase Costing Per Nos. *</label>
-                <input type="number" step="0.01" @bind="model.PurchaseCostingPerNos" class="form-control text-end" />
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="form-group mb-3">
-                <label class="form-label">Sale Costing Per Nos.</label>
-                <input type="number" step="0.01" @bind="model.SaleCostingPerNos" class="form-control text-end" />
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="form-group mb-3">
-                <label class="form-label text-danger">GST(%) *</label>
-                <select @bind="model.GST" class="form-select">
-                    <option value="NA">NA</option>
-                    <option value="0">0%</option>
-                    <option value="5">5%</option>
-                    <option value="12">12%</option>
-                    <option value="18">18%</option>
-                    <option value="28">28%</option>
-                </select>
-            </div>
-        </div>
-    </div>
-
-    <div class="row">
-        <div class="col-12">
-            <div class="form-group mb-3">
-                <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" @bind="model.IsActive" id="activeSwitch">
-                    <label class="form-check-label" for="activeSwitch">Status (Active/Inactive)</label>
+            <!-- Inventory Type Selection (Match Screen 3/4) -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <label class="form-label small fw-bold d-block">Inventory Type</label>
+                    <div class="d-flex gap-4 mt-1">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="invType" id="typeStorage" 
+                                   checked="@(model.InventoryType == "Storage Inventory")" 
+                                   @onclick='() => model.InventoryType = "Storage Inventory"'>
+                            <label class="form-check-label small" for="typeStorage">Storage Inventory</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="invType" id="typePacking" 
+                                   checked="@(model.InventoryType == "Packing Inventory")" 
+                                   @onclick='() => model.InventoryType = "Packing Inventory"'>
+                            <label class="form-check-label small" for="typePacking">Packing Inventory</label>
+                        </div>
+                    </div>
                 </div>
+            </div>
+
+            <div class="row g-3 section-row">
+                <!-- Group 1: Identity & Vendor -->
+                @if (model.InventoryType == "Packing Inventory")
+                {
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold text-primary">Vendor <span class="text-danger">*</span></label>
+                        <select @bind="model.VendorId" class="form-select form-select-sm border-primary-subtle shadow-sm">
+                            <option value="">Select Vendor</option>
+                            @if (vendorOptions != null)
+                            {
+                                @foreach (var opt in vendorOptions)
+                                {
+                                    <option value="@opt.Value">@opt.Text</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                }
+
+                <div class="col-md-6">
+                    <label class="form-label small fw-bold">Inventory Item Group <span class="text-danger">*</span></label>
+                    <select @bind="model.PurchaseItemGroupId" class="form-select form-select-sm">
+                        <option value="0">Select Item Group</option>
+                        @if (itemGroups != null)
+                        {
+                            @foreach (var group in itemGroups)
+                            {
+                                <option value="@group.Id">@group.Name</option>
+                            }
+                        }
+                    </select>
+                </div>
+
+                <!-- Group 2: Naming -->
+                <div class="@(model.InventoryType == "Packing Inventory" ? "col-md-6" : "col-md-12")">
+                    <label class="form-label small fw-bold">Inventory Item Name <span class="text-danger">*</span></label>
+                    <input type="text" @bind="model.ItemName" class="form-control form-control-sm" placeholder="Enter Item Name" />
+                </div>
+                
+                @if (model.InventoryType == "Packing Inventory")
+                {
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Billing Name <span class="text-danger">*</span></label>
+                        <input type="text" @bind="model.BillingName" class="form-control form-control-sm" placeholder="Search by Billing Name" />
+                    </div>
+                }
+
+                <!-- Group 3: Specs & Status -->
+                <div class="col-md-6">
+                    <label class="form-label small fw-bold">UOM <span class="text-danger">*</span></label>
+                    <select @bind="model.UOM" class="form-select form-select-sm">
+                        <option value="">Select UOM</option>
+                        @if (uomOptions != null)
+                        {
+                            @foreach (var opt in uomOptions)
+                            {
+                                <option value="@opt.Value">@opt.Text</option>
+                            }
+                        }
+                    </select>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label small fw-bold d-block">Status <span class="text-danger">*</span></label>
+                    <div class="d-flex gap-3 mt-1">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="statusRadio" id="statusActive" checked="@model.IsActive" @onclick="() => model.IsActive = true">
+                            <label class="form-check-label small" for="statusActive">Active</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="statusRadio" id="statusInactive" checked="@(!model.IsActive)" @onclick="() => model.IsActive = false">
+                            <label class="form-check-label small" for="statusInactive">Inactive</label>
+                        </div>
+                    </div>
+                </div>
+
+                @if (model.InventoryType == "Packing Inventory")
+                {
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Minimum Stock <span class="text-danger">*</span></label>
+                        <input type="number" step="0.01" @bind="model.MinimumStock" class="form-control form-control-sm" placeholder="Enter Minimum Stock Qty" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Maximum Stock <span class="text-danger">*</span></label>
+                        <input type="number" step="0.01" @bind="model.MaximumStock" class="form-control form-control-sm" placeholder="Enter maximum Stock Qty" />
+                    </div>
+                }
+
+                <!-- Group 4: Finance -->
+                <div class="col-md-6">
+                    <label class="form-label small fw-bold">Purchase Costing Per Nos. <span class="text-danger">*</span></label>
+                    <input type="number" step="0.01" @bind="model.PurchaseCostingPerNos" class="form-control form-control-sm" placeholder="Enter Actual Cost Per Nos." />
+                </div>
+
+                @if (model.InventoryType == "Packing Inventory")
+                {
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Sale Costing Per Nos. <span class="text-danger">*</span></label>
+                        <input type="number" step="0.01" @bind="model.SaleCostingPerNos" class="form-control form-control-sm" placeholder="Enter Mapping Cost Per Nos." />
+                    </div>
+                }
+
+                <div class="col-md-6">
+                    <label class="form-label small fw-bold">GST(%) <span class="text-danger">*</span></label>
+                    <select @bind="model.GST" class="form-select form-select-sm">
+                        @if (gstOptions != null)
+                        {
+                            @foreach (var opt in gstOptions)
+                            {
+                                <option value="@opt.Value">@opt.Text</option>
+                            }
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-end gap-2 mt-4">
+                <button class="btn btn-dark shadow-sm px-4" @onclick="SubmitForm" disabled="@isSubmitting">
+                    @(isSubmitting ? "Saving..." : "Save")
+                </button>
+                <button class="btn btn-outline-secondary shadow-sm px-4" @onclick="Cancel">Cancel</button>
             </div>
         </div>
     </div>
 </div>
 
 <style>
-    .form-card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.05); }
-    .form-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid #eee; }
+    .content-header { background: #fff; padding: 0.75rem 0; margin-bottom: 0; }
+    .breadcrumb-item { font-size: 0.85rem; color: #6c757d; }
+    .breadcrumb-item + .breadcrumb-item::before { content: ">"; padding: 0 0.5rem; color: #adb5bd; }
+
+    .card { border-radius: 12px; border: 1px solid #e0e0e0 !important; }
+    .card-header { border-radius: 12px 12px 0 0 !important; }
+    .card-header .card-title { font-size: 1.15rem; font-weight: 600; color: #2c3e50; }
+
+    .form-label { color: #4a5568; margin-bottom: 0.4rem; letter-spacing: 0.01em; }
+    .form-control, .form-select { border-color: #cbd5e0; transition: all 0.2s ease; border-radius: 6px; }
+    .form-control:focus, .form-select:focus { border-color: #3182ce; box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.15); }
+    
+    .section-row { background: #f8fafc; padding: 1.5rem; border-radius: 10px; border: 1px solid #edf2f7; }
+    
+    /* Input height consistency */
+    .form-control-sm, .form-select-sm { height: 38px; font-size: 0.9rem; }
+
+    /* Custom Radio styling */
+    .form-check-input:checked { background-color: #3182ce; border-color: #3182ce; }
+    .form-check-label { cursor: pointer; color: #4a5568; }
+
+    .text-primary { color: #3182ce !important; }
+    .border-primary-subtle { border-color: #bee3f8 !important; }
 </style>
 
 @code {
     [Parameter] public int? Id { get; set; }
     private PurchaseItem model = new() { IsActive = true, CreatedAt = DateTime.Now, InventoryType = "Packing Inventory", GST = "NA" };
     private List<PurchaseItemGroup>? itemGroups;
+    private List<SelectListItem>? uomOptions;
+    private List<SelectListItem>? gstOptions;
+    private List<SelectListItem>? vendorOptions;
     private bool IsEdit => Id.HasValue;
     private bool isSubmitting;
     private string? errorMessage;
 
     protected override async Task OnInitializedAsync()
     {
+        dynamic viewBag = new System.Dynamic.ExpandoObject();
+        await PurchaseService.LoadPurchaseItemDropdownsAsync(viewBag);
+        
         itemGroups = await PurchaseService.GetPurchaseItemGroupsAsync(null);
+        uomOptions = (List<SelectListItem>)viewBag.UOMOptions;
+        gstOptions = (List<SelectListItem>)viewBag.GSTOptions;
+        vendorOptions = (List<SelectListItem>)viewBag.VendorOptions;
 
         if (IsEdit)
         {
@@ -180,7 +258,7 @@
         isSubmitting = true;
         errorMessage = null;
 
-        var user = "Admin"; // Hardcoded
+        var user = "Admin";
         var result = IsEdit 
             ? await PurchaseService.UpdatePurchaseItemAsync(Id!.Value, model, user)
             : await PurchaseService.CreatePurchaseItemAsync(model, user);

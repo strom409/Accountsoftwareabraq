@@ -135,6 +135,7 @@ public class PurchaseMasterService : IPurchaseMasterService
     {
         var query = _context.PurchaseItems
             .Include(p => p.PurchaseItemGroup)
+            .Include(p => p.Vendor)
             .AsQueryable();
 
         if (!string.IsNullOrEmpty(searchTerm))
@@ -143,6 +144,7 @@ public class PurchaseMasterService : IPurchaseMasterService
                 p.ItemName.Contains(searchTerm) || 
                 p.Code.Contains(searchTerm) ||
                 (p.PurchaseItemGroup != null && p.PurchaseItemGroup.Name.Contains(searchTerm)) ||
+                (p.Vendor != null && p.Vendor.AccountName.Contains(searchTerm)) ||
                 (p.BillingName != null && p.BillingName.Contains(searchTerm)));
         }
 
@@ -315,17 +317,39 @@ public class PurchaseMasterService : IPurchaseMasterService
 
         viewBag.PurchaseItemGroupId = new SelectList(itemGroups, "Id", "Name");
         
-        viewBag.UOMOptions = new List<SelectListItem>
+        var uoms = await _context.UOMs
+            .Where(u => u.IsActive && u.IsApproved)
+            .OrderBy(u => u.UOMName)
+            .ToListAsync();
+
+        viewBag.UOMOptions = uoms.Select(u => new SelectListItem 
+        { 
+            Value = u.UOMName, 
+            Text = u.UOMName 
+        }).ToList();
+
+        var vendors = await _context.BankMasters
+            .Include(b => b.Group)
+                .ThenInclude(g => g.MasterGroup)
+            .Include(b => b.Group)
+                .ThenInclude(g => g.MasterSubGroup)
+            .Where(b => b.IsActive && b.Group != null && (
+                b.Group.Name.Contains("Vendor") || 
+                b.Group.Name.Contains("Vender") || 
+                b.Group.Name.Contains("Creditor") || 
+                b.Group.Name.Contains("Supplier") || 
+                b.Group.Name.Contains("Sundry") ||
+                (b.Group.MasterSubGroup != null && (b.Group.MasterSubGroup.Name.Contains("Vendor") || b.Group.MasterSubGroup.Name.Contains("Vender") || b.Group.MasterSubGroup.Name.Contains("Creditor"))) ||
+                (b.Group.MasterGroup != null && (b.Group.MasterGroup.Name.Contains("Vendor") || b.Group.MasterGroup.Name.Contains("Vender") || b.Group.MasterGroup.Name.Contains("Creditor")))
+            ))
+            .OrderBy(b => b.AccountName)
+            .ToListAsync();
+
+        viewBag.VendorOptions = vendors.Select(v => new SelectListItem
         {
-            new SelectListItem { Value = "Pieces", Text = "Pieces" },
-            new SelectListItem { Value = "Number", Text = "Number" },
-            new SelectListItem { Value = "Kg", Text = "Kg" },
-            new SelectListItem { Value = "Gram", Text = "Gram" },
-            new SelectListItem { Value = "Liter", Text = "Liter" },
-            new SelectListItem { Value = "Meter", Text = "Meter" },
-            new SelectListItem { Value = "Box", Text = "Box" },
-            new SelectListItem { Value = "Carton", Text = "Carton" }
-        };
+            Value = v.Id.ToString(),
+            Text = v.AccountName
+        }).ToList();
 
         viewBag.GSTOptions = new List<SelectListItem>
         {

@@ -71,17 +71,34 @@
                             <td>@item.UOMCode</td>
                             <td>@item.CFT.ToString("N0")</td>
                             <td>
-                                @if (item.IsActive)
-                                {
-                                    <i class="bi bi-check-circle-fill status-check"></i>
-                                }
-                                else
-                                {
-                                    <i class="bi bi-x-circle status-check" style="color: #dc3545;"></i>
-                                }
+                                <div class="d-flex align-items-center gap-2">
+                                    @if (item.IsActive)
+                                    {
+                                        <i class="bi bi-check-circle-fill status-check" title="Active"></i>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-x-circle status-check" style="color: #dc3545;" title="Inactive"></i>
+                                    }
+                                    
+                                    @if (item.IsApproved)
+                                    {
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle px-2" style="font-size: 0.7rem;">Approved</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-warning-subtle text-warning border border-warning-subtle px-2" style="font-size: 0.7rem;">Pending</span>
+                                    }
+                                </div>
                             </td>
                             <td>
                                 <div class="action-icons">
+                                    @if (!item.IsApproved)
+                                    {
+                                        <button type="button" @onclick="() => ApproveUOM(item.Id)" class="action-icon text-success" title="Approve">
+                                            <i class="bi bi-shield-check"></i>
+                                        </button>
+                                    }
                                     <button type="button" @onclick="() => OpenEditModal(item)" class="action-icon" title="Edit">
                                         <i class="bi bi-pencil-square"></i>
                                     </button>
@@ -129,15 +146,15 @@
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Length</label>
-                            <InputNumber @bind-Value="editingUom.Length" class="form-control" disabled="@isDetailsView" @oninput="UpdateCFT" />
+                            <InputNumber @bind-Value="editingUom.Length" @bind-Value:after="UpdateCFT" class="form-control" disabled="@isDetailsView" />
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Width</label>
-                            <InputNumber @bind-Value="editingUom.Width" class="form-control" disabled="@isDetailsView" @oninput="UpdateCFT" />
+                            <InputNumber @bind-Value="editingUom.Width" @bind-Value:after="UpdateCFT" class="form-control" disabled="@isDetailsView" />
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Height</label>
-                            <InputNumber @bind-Value="editingUom.Height" class="form-control" disabled="@isDetailsView" @oninput="UpdateCFT" />
+                            <InputNumber @bind-Value="editingUom.Height" @bind-Value:after="UpdateCFT" class="form-control" disabled="@isDetailsView" />
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">CFT</label>
@@ -406,6 +423,17 @@
                 successMessage = "UOM deleted successfully!";
                 await RefreshList();
             }
+        }
+    }
+
+    private async Task ApproveUOM(int id)
+    {
+        var username = HttpContextAccessor.HttpContext?.Session.GetString("Username") ?? "Unknown";
+        var result = await UOMService.ApproveUOMAsync(id, username);
+        if (result)
+        {
+            successMessage = "UOM approved successfully!";
+            await RefreshList();
         }
     }
 

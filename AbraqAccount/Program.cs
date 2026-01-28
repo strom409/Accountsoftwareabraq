@@ -95,6 +95,14 @@ try
             DELETE FROM EntryForAccounts WHERE TransactionType = 'GeneralEntry' AND AccountName = 'Default'
         ");
 
+        // Seed ExpenseEntry profile for Rules configuration
+        dbContext.Database.ExecuteSqlRaw(@"
+            IF NOT EXISTS (SELECT 1 FROM EntryForAccounts WHERE TransactionType = 'ExpenseEntry')
+            BEGIN
+                INSERT INTO EntryForAccounts (TransactionType, AccountName, CreatedAt) VALUES ('ExpenseEntry', 'null', GETDATE());
+            END
+        ");
+
         // BankMasters migration
         var bankMasterMigrationSql = @"
             IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'BankMasters' AND COLUMN_NAME = 'AccountName')

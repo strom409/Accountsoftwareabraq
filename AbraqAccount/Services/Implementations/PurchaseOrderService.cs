@@ -32,8 +32,7 @@ public class PurchaseOrderService : IPurchaseOrderService
         if (!string.IsNullOrEmpty(vendorName))
         {
             query = query.Where(p => 
-                (p.Vendor != null && p.Vendor.VendorName.Contains(vendorName)) ||
-                (p.Vendor != null && p.Vendor.VendorCode.Contains(vendorName)));
+                (p.Vendor != null && p.Vendor.AccountName.Contains(vendorName)));
         }
 
         if (!string.IsNullOrEmpty(status))
@@ -290,9 +289,21 @@ public class PurchaseOrderService : IPurchaseOrderService
         };
         viewBag.TaxOptions = new SelectList(taxOptions, "Value", "Text", "Select");
 
-        var vendors = await _context.Vendors
-            .Where(v => v.IsActive)
-            .Select(v => new { id = v.Id, name = $"{v.VendorName} ({v.VendorCode})" })
+        var vendors = await _context.BankMasters
+            .Include(b => b.Group)
+                .ThenInclude(g => g.MasterGroup)
+            .Include(b => b.Group)
+                .ThenInclude(g => g.MasterSubGroup)
+            .Where(b => b.IsActive && b.Group != null && (
+                b.Group.Name.Contains("Vendor") || 
+                b.Group.Name.Contains("Vender") || 
+                b.Group.Name.Contains("Creditor") || 
+                b.Group.Name.Contains("Supplier") || 
+                b.Group.Name.Contains("Sundry") ||
+                (b.Group.MasterSubGroup != null && (b.Group.MasterSubGroup.Name.Contains("Vendor") || b.Group.MasterSubGroup.Name.Contains("Vender") || b.Group.MasterSubGroup.Name.Contains("Creditor"))) ||
+                (b.Group.MasterGroup != null && (b.Group.MasterGroup.Name.Contains("Vendor") || b.Group.MasterGroup.Name.Contains("Vender") || b.Group.MasterGroup.Name.Contains("Creditor")))
+            ))
+            .Select(v => new { id = v.Id, name = v.AccountName })
             .ToListAsync();
         viewBag.Vendors = new SelectList(vendors, "id", "name");
 
@@ -322,7 +333,7 @@ public class PurchaseOrderService : IPurchaseOrderService
 
         if (fromDate.HasValue) query = query.Where(po => po.PODate >= fromDate.Value);
         if (toDate.HasValue) query = query.Where(po => po.PODate <= toDate.Value);
-        if (!string.IsNullOrEmpty(vendorName)) query = query.Where(po => po.Vendor != null && po.Vendor.VendorName.Contains(vendorName));
+        if (!string.IsNullOrEmpty(vendorName)) query = query.Where(po => po.Vendor != null && po.Vendor.AccountName.Contains(vendorName));
         if (!string.IsNullOrEmpty(itemGroup)) query = query.Where(po => po.Items.Any(item => item.PurchaseItemGroup != null && item.PurchaseItemGroup.Name.Contains(itemGroup)));
         if (!string.IsNullOrEmpty(itemName)) query = query.Where(po => po.Items.Any(item => item.PurchaseItem != null && item.PurchaseItem.ItemName.Contains(itemName)));
         if (!string.IsNullOrEmpty(uom)) query = query.Where(po => po.Items.Any(item => item.UOM == uom));
@@ -357,18 +368,30 @@ public class PurchaseOrderService : IPurchaseOrderService
 
     public async Task<IEnumerable<LookupItem>> GetVendorsAsync(string? searchTerm)
     {
-        var query = _context.Vendors.Where(v => v.IsActive).AsQueryable();
+        var query = _context.BankMasters
+            .Include(b => b.Group)
+                .ThenInclude(g => g.MasterGroup)
+            .Include(b => b.Group)
+                .ThenInclude(g => g.MasterSubGroup)
+            .Where(b => b.IsActive && b.Group != null && (
+                b.Group.Name.Contains("Vendor") || 
+                b.Group.Name.Contains("Vender") || 
+                b.Group.Name.Contains("Creditor") || 
+                b.Group.Name.Contains("Supplier") || 
+                b.Group.Name.Contains("Sundry") ||
+                (b.Group.MasterSubGroup != null && (b.Group.MasterSubGroup.Name.Contains("Vendor") || b.Group.MasterSubGroup.Name.Contains("Vender") || b.Group.MasterSubGroup.Name.Contains("Creditor"))) ||
+                (b.Group.MasterGroup != null && (b.Group.MasterGroup.Name.Contains("Vendor") || b.Group.MasterGroup.Name.Contains("Vender") || b.Group.MasterGroup.Name.Contains("Creditor")))
+            ))
+            .AsQueryable();
 
         if (!string.IsNullOrEmpty(searchTerm))
         {
-            query = query.Where(v => 
-                v.VendorName.Contains(searchTerm) ||
-                v.VendorCode.Contains(searchTerm));
+            query = query.Where(v => v.AccountName.Contains(searchTerm));
         }
 
         return await query
-            .OrderBy(v => v.VendorName)
-            .Select(v => new LookupItem { Id = v.Id, Name = v.VendorName })
+            .OrderBy(v => v.AccountName)
+            .Select(v => new LookupItem { Id = v.Id, Name = v.AccountName })
             .Take(50)
             .ToListAsync();
     }

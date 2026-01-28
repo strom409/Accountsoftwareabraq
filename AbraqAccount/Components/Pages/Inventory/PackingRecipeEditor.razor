@@ -1,15 +1,9 @@
 @page "/inventory/packing-recipes/create"
-@page "/inventory/packing-recipes/edit/{Id:int}"
+@page "/inventory/packing-recipes/edit/{Id:long}"
 @using AbraqAccount.Components.Pages.Inventory.SubComponents
 
-<div class="container py-4">
-    <div class="row justify-content-center">
-        <div class="col-lg-12">
-            <PackingRecipeForm Id="@Id" />
-        </div>
-    </div>
-</div>
+<PackingRecipeForm Id="@Id" />
 
 @code {
-    [Parameter] public int? Id { get; set; }
+    [Parameter] public long? Id { get; set; }
 }

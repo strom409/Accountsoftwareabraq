@@ -25,11 +25,11 @@ public class PackingService : IPackingService
         if (!string.IsNullOrEmpty(searchTerm))
         {
             query = query.Where(p => 
-                p.RecipeCode.Contains(searchTerm) ||
-                p.RecipeName.Contains(searchTerm));
+                (p.RecipeCode != null && p.RecipeCode.Contains(searchTerm)) ||
+                (p.recipename != null && p.recipename.Contains(searchTerm)));
         }
 
-        return await query.OrderByDescending(p => p.CreatedAt).ToListAsync();
+        return await query.OrderByDescending(p => p.createddate).ToListAsync();
     }
 
     public async Task<(bool success, string message)> CreatePackingRecipeAsync(PackingRecipe model, IFormCollection form)
@@ -38,25 +38,29 @@ public class PackingService : IPackingService
         {
              var materials = GetMaterialsFromForm(form);
 
-            // Generate Recipe Code
-            var lastRecipe = await _context.PackingRecipes.OrderByDescending(r => r.Id).FirstOrDefaultAsync();
+            // Generate Recipe Code and ID
+            var lastRecipe = await _context.PackingRecipes.OrderByDescending(r => r.Recipeid).FirstOrDefaultAsync();
+            long nextId = (lastRecipe?.Recipeid ?? 0) + 1;
             int nextCode = 1;
-            if (lastRecipe != null)
+            if (lastRecipe != null && !string.IsNullOrEmpty(lastRecipe.RecipeCode))
             {
                 if (int.TryParse(lastRecipe.RecipeCode, out int lastCode)) nextCode = lastCode + 1;
             }
+            
+            model.Recipeid = nextId;
             model.RecipeCode = nextCode.ToString("D4");
-            model.CreatedAt = DateTime.Now;
+            model.createddate = DateTime.Now;
+            model.flagdeleted = false;
+            model.status = true;
 
-            if (materials.Any()) model.Value = materials.Sum(m => m.Value);
-            else model.Value = 0;
+            if (materials.Any()) model.unitcost = materials.Sum(m => m.Value);
+            else model.unitcost = 0;
 
             _context.PackingRecipes.Add(model);
-            await _context.SaveChangesAsync();
-
+            
             foreach (var material in materials)
             {
-                material.PackingRecipeId = model.Id;
+                material.PackingRecipeId = model.Recipeid;
                 material.CreatedAt = DateTime.Now;
                 _context.PackingRecipeMaterials.Add(material);
             }
@@ -70,53 +74,112 @@ public class PackingService : IPackingService
         }
     }
 
-    public async Task<PackingRecipe?> GetPackingRecipeByIdAsync(int id)
+    public async Task<PackingRecipe?> GetPackingRecipeByIdAsync(long id)
     {
         return await _context.PackingRecipes
             .Include(p => p.Materials)
                 .ThenInclude(m => m.PurchaseItem)
-            .FirstOrDefaultAsync(m => m.Id == id);
+            .FirstOrDefaultAsync(m => m.Recipeid == id);
     }
 
-    public async Task<(bool success, string message)> UpdatePackingRecipeAsync(int id, PackingRecipe model, List<PackingRecipeMaterial> materials)
+    public async Task<(bool success, string message)> SavePackingRecipeAsync(PackingRecipe model, List<PackingRecipeMaterial> materials)
     {
         try
         {
-            var existing = await _context.PackingRecipes
-                .Include(p => p.Materials)
-                .FirstOrDefaultAsync(m => m.Id == id);
+            PackingRecipe? existing;
+            
+            if (model.Recipeid == 0)
+            {
+                // Creation Logic - Use AsNoTracking() for the lookup to avoid tracking conflicts
+                var lastRecipe = await _context.PackingRecipes
+                    .AsNoTracking()
+                    .OrderByDescending(r => r.Recipeid)
+                    .FirstOrDefaultAsync();
 
-            if (existing == null) return (false, "Not found");
+                long nextId = (lastRecipe?.Recipeid ?? 0) + 1;
+                int nextCode = 1;
 
-            existing.RecipeName = model.RecipeName;
-            existing.RecipeUOMName = model.RecipeUOMName;
-            existing.CostUnit = model.CostUnit;
-            existing.LabourCost = model.LabourCost;
-            existing.HighDensityRate = model.HighDensityRate;
-            existing.IsActive = model.IsActive;
+                if (lastRecipe != null && !string.IsNullOrEmpty(lastRecipe.RecipeCode))
+                {
+                    if (int.TryParse(lastRecipe.RecipeCode, out int lastCode)) nextCode = lastCode + 1;
+                }
+                
+                existing = new PackingRecipe
+                {
+                    Recipeid = nextId,
+                    RecipeCode = nextCode.ToString("D4"),
+                    createddate = DateTime.Now,
+                    flagdeleted = false,
+                    status = true
+                };
+                _context.PackingRecipes.Add(existing);
+            }
+            else
+            {
+                existing = await _context.PackingRecipes
+                    .Include(p => p.Materials)
+                    .FirstOrDefaultAsync(m => m.Recipeid == model.Recipeid);
+                
+                if (existing == null) return (false, "Recipe not found.");
+                
+                existing.updateddate = DateTime.Now;
+                
+                // Clear old materials for update
+                if (existing.Materials != null && existing.Materials.Any())
+                {
+                    _context.PackingRecipeMaterials.RemoveRange(existing.Materials);
+                }
+            }
 
-            _context.PackingRecipeMaterials.RemoveRange(existing.Materials);
+            // Sync properties from model to existing
+            existing.recipename = model.RecipeName;
+            existing.ItemWeight = (double)model.CostUnit; 
+            existing.labourcost = model.LabourCost;
+            existing.HighDensityRate = (double)model.HighDensityRate;
+            existing.status = model.IsActive;
+            existing.flagdeleted = false;
 
             if (materials != null && materials.Any())
             {
-                existing.Value = materials.Sum(m => m.Value);
+                existing.unitcost = materials.Sum(m => m.Value);
+                
                 foreach (var material in materials)
                 {
                     if (material.PurchaseItemId > 0)
                     {
-                        material.PackingRecipeId = id;
-                        material.CreatedAt = DateTime.Now;
-                        _context.PackingRecipeMaterials.Add(material);
+                        var newMat = new PackingRecipeMaterial
+                        {
+                            PackingRecipeId = existing.Recipeid,
+                            PurchaseItemId = material.PurchaseItemId,
+                            Qty = material.Qty,
+                            UOM = material.UOM ?? "",
+                            Value = material.Value,
+                            CreatedAt = DateTime.Now
+                        };
+                        _context.PackingRecipeMaterials.Add(newMat);
                     }
                 }
             }
+            else
+            {
+                existing.unitcost = 0;
+            }
+
             await _context.SaveChangesAsync();
-            return (true, "Updated successfully");
+            return (true, model.Recipeid == 0 ? "Created successfully" : "Updated successfully");
         }
         catch (Exception ex)
         {
-            return (false, "Error: " + ex.Message);
+            var msg = ex.Message;
+            if (ex.InnerException != null) msg += " Inner: " + ex.InnerException.Message;
+            return (false, "Error: " + msg);
         }
+    }
+
+    public async Task<(bool success, string message)> UpdatePackingRecipeAsync(long id, PackingRecipe model, List<PackingRecipeMaterial> materials)
+    {
+        model.Recipeid = id;
+        return await SavePackingRecipeAsync(model, materials);
     }
 
     public async Task<IEnumerable<LookupItem>> GetPackingMaterialsAsync(string? searchTerm)
@@ -135,7 +198,8 @@ public class PackingService : IPackingService
             .Select(p => new LookupItem { 
                 Id = p.Id, 
                 Name = p.ItemName,
-                UOM = p.UOM
+                UOM = p.UOM,
+                Rate = p.PurchaseCostingPerNos
             })
             .ToListAsync();
     }
@@ -146,12 +210,12 @@ public class PackingService : IPackingService
         return material?.UOM ?? "";
     }
 
-    public async Task<object?> GetSpecialRateFormDataAsync(int id)
+    public async Task<object?> GetSpecialRateFormDataAsync(long id)
     {
         var recipe = await _context.PackingRecipes
             .Include(p => p.Materials)
                 .ThenInclude(m => m.PurchaseItem)
-            .FirstOrDefaultAsync(r => r.Id == id);
+            .FirstOrDefaultAsync(r => r.Recipeid == id);
 
         if (recipe == null) return null;
 
@@ -163,7 +227,7 @@ public class PackingService : IPackingService
 
         return new
         {
-            recipeId = recipe.Id,
+            recipeId = recipe.Recipeid,
             recipeName = recipe.RecipeName,
             materials = recipe.Materials.Select(m => new
             {
@@ -220,14 +284,13 @@ public class PackingService : IPackingService
 
     public async Task LoadRecipeDropdownsAsync(dynamic viewBag)
     {
-        var uomList = await _context.PurchaseItems
-            .Where(p => !string.IsNullOrEmpty(p.UOM))
-            .Select(p => p.UOM)
-            .Distinct()
-            .OrderBy(u => u)
+        var uomList = await _context.UOMs
+            .Where(u => u.IsActive && u.IsApproved)
+            .OrderBy(u => u.UOMName)
+            .Select(u => new { Value = u.UOMName, Text = u.UOMName })
             .ToListAsync();
 
-        viewBag.RecipeUOMName = new SelectList(uomList);
+        viewBag.RecipeUOMName = new SelectList(uomList, "Value", "Text");
     }
 
     private List<PackingRecipeMaterial> GetMaterialsFromForm(IFormCollection form)

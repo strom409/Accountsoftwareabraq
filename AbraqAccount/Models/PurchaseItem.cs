@@ -23,8 +23,11 @@ public class PurchaseItem
     public bool IsActive { get; set; } = true; // Status
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 
-    // Navigation property
+    // Navigation properties
     public PurchaseItemGroup? PurchaseItemGroup { get; set; }
+    
+    public int? VendorId { get; set; }
+    public BankMaster? Vendor { get; set; }
 
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public decimal OpeningQty { get; set; }

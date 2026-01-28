@@ -579,22 +579,6 @@ public class AppDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // Map to SQL Server PackingRecipes table
-        modelBuilder.Entity<PackingRecipe>(entity =>
-        {
-            entity.ToTable("PackingRecipes");
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Id).HasColumnName("Id");
-            entity.Property(e => e.RecipeCode).HasColumnName("RecipeCode").HasMaxLength(50).IsRequired();
-            entity.Property(e => e.RecipeName).HasColumnName("RecipeName").HasMaxLength(200).IsRequired();
-            entity.Property(e => e.RecipeUOMName).HasColumnName("RecipeUOMName").HasMaxLength(50).IsRequired();
-            entity.Property(e => e.CostUnit).HasColumnName("CostUnit").HasColumnType("decimal(18,2)").IsRequired();
-            entity.Property(e => e.LabourCost).HasColumnName("LabourCost").HasColumnType("decimal(18,2)").IsRequired();
-            entity.Property(e => e.HighDensityRate).HasColumnName("HighDensityRate").HasColumnType("decimal(18,2)").IsRequired();
-            entity.Property(e => e.IsActive).HasColumnName("IsActive").HasDefaultValue(true);
-            entity.Property(e => e.Value).HasColumnName("Value").HasColumnType("decimal(18,2)");
-            entity.Property(e => e.CreatedAt).HasColumnName("CreatedAt");
-        });
 
         // Map to SQL Server PackingRecipeMaterials table
         modelBuilder.Entity<PackingRecipeMaterial>(entity =>
@@ -1234,6 +1218,27 @@ public class AppDbContext : DbContext
             
             // Index for fast lookups (updated to include EntryAccountId)
             entity.HasIndex(e => new { e.AccountType, e.AccountId, e.EntryAccountId });
+        });
+        modelBuilder.Entity<PackingRecipe>(entity =>
+        {
+            entity.ToTable("Recipe");
+            entity.HasKey(e => e.Recipeid);
+            entity.Property(e => e.Recipeid).HasColumnName("Recipeid").ValueGeneratedNever();
+            entity.Property(e => e.RecipeCode).HasColumnName("RecipeCode").HasMaxLength(10);
+            entity.Property(e => e.itemId).HasColumnName("itemId").HasMaxLength(250);
+            entity.Property(e => e.unitcost).HasColumnName("unitcost").HasColumnType("money");
+            entity.Property(e => e.labourcost).HasColumnName("labourcost").HasColumnType("money");
+            entity.Property(e => e.flagdeleted).HasColumnName("flagdeleted");
+            entity.Property(e => e.endeffdt).HasColumnName("endeffdt");
+            entity.Property(e => e.createddate).HasColumnName("createddate");
+            entity.Property(e => e.createdby).HasColumnName("createdby");
+            entity.Property(e => e.updatedby).HasColumnName("updatedby");
+            entity.Property(e => e.updateddate).HasColumnName("updateddate");
+            entity.Property(e => e.recipename).HasColumnName("recipename").HasMaxLength(250);
+            entity.Property(e => e.status).HasColumnName("status");
+            entity.Property(e => e.ItemWeight).HasColumnName("ItemWeight");
+            entity.Property(e => e.RecipePackageId).HasColumnName("RecipePackageId");
+            entity.Property(e => e.HighDensityRate).HasColumnName("HighDensityRate");
         });
 
         // Map to SQL Server Unit_master table

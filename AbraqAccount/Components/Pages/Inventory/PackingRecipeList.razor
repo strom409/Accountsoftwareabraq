@@ -4,90 +4,142 @@
 @inject IPackingService PackingService
 @inject NavigationManager Navigation
 
-<div class="container-fluid py-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="mb-0">Packing Recipes</h2>
-        <button class="btn btn-primary" @onclick="CreateNew">
-            <i class="bi bi-plus-lg"></i> Add New Recipe
-        </button>
+<div class="content-header shadow-sm">
+    <div class="container-fluid">
+        <div class="row align-items-center">
+            <div class="col-sm-6">
+                <h1 class="m-0 text-dark">Recipe Master <small class="text-muted fw-light" style="font-size: 0.6em;">Control panel</small></h1>
+            </div>
+            <div class="col-sm-6 text-end">
+                <nav aria-label="breadcrumb" class="d-inline-block">
+                    <ol class="breadcrumb bg-transparent p-0 m-0">
+                        <li class="breadcrumb-item"><i class="bi bi-house-door me-1"></i>Home</li>
+                        <li class="breadcrumb-item active">Recipe Master</li>
+                    </ol>
+                </nav>
+            </div>
+        </div>
     </div>
+</div>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="bi bi-search"></i></span>
-                        <input type="text" class="form-control" placeholder="Search by name or code..." 
-                               @bind="searchTerm" @bind:event="oninput" @onkeyup="HandleSearch" />
-                    </div>
+<div class="container-fluid py-4">
+    <div class="card shadow-sm border-0 rounded-3">
+        <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0 text-primary">Recipe Master <small class="text-muted fw-normal">- List</small></h5>
+            <div class="d-flex gap-2 align-items-center">
+                <div class="input-group input-group-sm" style="width: 300px;">
+                    <input type="text" class="form-control" placeholder="Enter Search Criteria" 
+                           @bind="searchTerm" @bind:event="oninput" @onkeyup="HandleSearch" />
+                    <button class="btn btn-dark" type="button" @onclick="LoadRecipes">
+                        <i class="bi bi-search"></i>
+                    </button>
+                    <button class="btn btn-secondary shadow-sm ms-1" style="border-radius: 4px;" @onclick="CreateNew">
+                        <i class="bi bi-plus-lg"></i>
+                    </button>
                 </div>
             </div>
         </div>
-    </div>
-
-    @if (recipes == null)
-    {
-        <div class="text-center py-5">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-        </div>
-    }
-    else if (!recipes.Any())
-    {
-        <div class="alert alert-info">No packing recipes found.</div>
-    }
-    else
-    {
-        <div class="card shadow-sm">
+        <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead class="table-light">
+                <table class="table table-hover align-middle mb-0 custom-table">
+                    <thead>
                         <tr>
-                            <th>Code</th>
-                            <th>Recipe Name</th>
-                            <th>UOM</th>
-                            <th class="text-end">Cost Unit</th>
-                            <th class="text-end">Labour Cost</th>
-                            <th class="text-end">Total Value</th>
+                            <th class="ps-4">Recipe Code <i class="bi bi-arrow-down-up small ms-1 text-muted"></i></th>
+                            <th>Recipe Name <i class="bi bi-arrow-down-up small ms-1 text-muted"></i></th>
+                            <th>Cost Unit <i class="bi bi-arrow-down-up small ms-1 text-muted"></i></th>
+                            <th>value <i class="bi bi-arrow-down-up small ms-1 text-muted"></i></th>
                             <th>Status</th>
-                            <th class="text-end">Actions</th>
+                            <th class="text-center">Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var recipe in recipes)
+                        @if (recipes == null)
                         {
                             <tr>
-                                <td><span class="badge bg-secondary">@recipe.RecipeCode</span></td>
-                                <td class="fw-bold">@recipe.RecipeName</td>
-                                <td>@recipe.RecipeUOMName</td>
-                                <td class="text-end">@recipe.CostUnit.ToString("N2")</td>
-                                <td class="text-end">@recipe.LabourCost.ToString("N2")</td>
-                                <td class="text-end text-primary fw-bold">@recipe.Value.ToString("N2")</td>
-                                <td>
-                                    @if (recipe.IsActive)
-                                    {
-                                        <span class="badge bg-success-subtle text-success">Active</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="badge bg-danger-subtle text-danger">Inactive</span>
-                                    }
-                                </td>
-                                <td class="text-end">
-                                    <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => Edit(recipe.Id)">
-                                        <i class="bi bi-pencil"></i>
-                                    </button>
+                                <td colspan="6" class="text-center py-5">
+                                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                    <span class="ms-2 text-muted">Loading recipes...</span>
                                 </td>
                             </tr>
+                        }
+                        else if (!recipes.Any())
+                        {
+                            <tr>
+                                <td colspan="6" class="text-center py-5 text-muted">
+                                    No records found matching your criteria.
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var recipe in recipes)
+                            {
+                                <tr>
+                                    <td class="ps-4">@recipe.RecipeCode</td>
+                                    <td class="fw-medium">@recipe.RecipeName</td>
+                                    <td>@recipe.CostUnit.ToString("0")</td>
+                                    <td>@recipe.Value.ToString("N2")</td>
+                                    <td>
+                                        <div class="status-circle @(recipe.IsActive ? "active" : "inactive")">
+                                            <i class="bi @(recipe.IsActive ? "bi-check-circle-fill" : "bi-dash-circle-fill")"></i>
+                                        </div>
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="action-buttons d-flex justify-content-center gap-1">
+                                            <button class="btn btn-link btn-sm p-0 action-icon" @onclick="() => Edit(recipe.Recipeid)" title="Edit">
+                                                <i class="bi bi-pencil-square fs-5"></i>
+                                            </button>
+                                            <button class="btn btn-link btn-sm p-0 action-icon" title="View">
+                                                <i class="bi bi-eye fs-5"></i>
+                                            </button>
+                                            <button class="btn btn-link btn-sm p-0 action-icon" title="Info">
+                                                <i class="bi bi-info-circle fs-5"></i>
+                                            </button>
+                                            <button class="btn btn-link btn-sm p-0 action-icon" title="Add">
+                                                <i class="bi bi-plus fs-4"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
                         }
                     </tbody>
                 </table>
             </div>
         </div>
-    }
+    </div>
 </div>
+
+<style>
+    .content-header { background: #fff; padding: 0.75rem 0; margin-bottom: 0; }
+    .breadcrumb-item { font-size: 0.85rem; color: #6c757d; }
+    .breadcrumb-item + .breadcrumb-item::before { content: ">"; padding: 0 0.5rem; color: #adb5bd; }
+    
+    .custom-table thead th { 
+        background-color: #fcfcfc; 
+        color: #444; 
+        font-weight: 600; 
+        font-size: 0.9rem;
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid #f0f0f0;
+    }
+    .custom-table tbody td { 
+        font-size: 0.85rem; 
+        padding-top: 0.75rem; 
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid #f8f9fa;
+    }
+
+    .status-circle { font-size: 1.1rem; }
+    .status-circle.active { color: #666; } /* Match the gray check circle in screenshot */
+    .status-circle.inactive { color: #ccc; }
+
+    .action-icon { color: #555; text-decoration: none; }
+    .action-icon:hover { color: #000; }
+    
+    .card-title { font-weight: 500; }
+</style>
 
 @code {
     private List<PackingRecipe>? recipes;
@@ -105,12 +157,12 @@
 
     private async Task HandleSearch(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter" || searchTerm.Length > 2 || searchTerm.Length == 0)
+        if (e.Key == "Enter")
         {
             await LoadRecipes();
         }
     }
 
     private void CreateNew() => Navigation.NavigateTo("/inventory/packing-recipes/create");
-    private void Edit(int id) => Navigation.NavigateTo($"/inventory/packing-recipes/edit/{id}");
+    private void Edit(long id) => Navigation.NavigateTo($"/inventory/packing-recipes/edit/{id}");
 }

@@ -4,143 +4,209 @@
 @inject IPackingService PackingService
 @inject NavigationManager Navigation
 
-<div class="form-card">
-    <div class="form-header">
-        <h3>@(IsEdit ? "Edit" : "Add") Packing Recipe</h3>
-        <div class="header-actions">
-            @if (IsEdit)
-            {
-                <span class="badge bg-info me-3">Code: @model.RecipeCode</span>
-            }
-            <button class="btn btn-primary" @onclick="SubmitForm" disabled="@isSubmitting">
-                @if (isSubmitting)
-                {
-                    <span class="spinner-border spinner-border-sm" role="status"></span>
-                }
-                Save
-            </button>
-            <button class="btn btn-secondary" @onclick="Cancel">Cancel</button>
+<div class="content-header shadow-sm mb-4">
+    <div class="container-fluid">
+        <div class="row align-items-center">
+            <div class="col-sm-6">
+                <h1 class="m-0 text-dark">Recipe Master <small class="text-muted fw-light" style="font-size: 0.6em;">Control panel</small></h1>
+            </div>
+            <div class="col-sm-6 text-end">
+                <nav aria-label="breadcrumb" class="d-inline-block">
+                    <ol class="breadcrumb bg-transparent p-0 m-0">
+                        <li class="breadcrumb-item"><i class="bi bi-house-door me-1"></i>Home</li>
+                        <li class="breadcrumb-item active">Recipe Master</li>
+                    </ol>
+                </nav>
+            </div>
         </div>
     </div>
+</div>
 
-    @if (!string.IsNullOrEmpty(errorMessage))
-    {
-        <div class="alert alert-danger">@errorMessage</div>
-    }
-
-    <div class="row g-3">
-        <div class="col-md-4">
-            <div class="form-group mb-3">
-                <label class="form-label text-danger">Recipe Name *</label>
-                <input type="text" @bind="model.RecipeName" class="form-control" placeholder="Enter recipe name..." />
+<div class="container-fluid">
+    <div class="card shadow-sm border-0 rounded-3 mb-4">
+        <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0 text-primary">Recipe Master <small class="text-muted fw-normal">- @(IsEdit ? "Edit" : "Add")</small></h5>
+            <div class="d-flex gap-2">
+                <button class="btn btn-dark btn-sm px-3 shadow-sm" style="border-radius: 4px;" @onclick="SubmitForm" disabled="@isSubmitting">
+                    @(isSubmitting ? "..." : "Save")
+                </button>
+                <button class="btn btn-secondary btn-sm px-3 shadow-sm" style="border-radius: 4px;" @onclick="Cancel">
+                    <i class="bi bi-arrow-left"></i>
+                </button>
             </div>
         </div>
-        <div class="col-md-2">
-            <div class="form-group mb-3">
-                <label class="form-label text-danger">UOM *</label>
-                <select @bind="model.RecipeUOMName" class="form-select">
-                    <option value="">-- Select --</option>
-                    @if (uomOptions != null)
-                    {
-                        @foreach (var opt in uomOptions)
+        <div class="card-body">
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger mb-4">@errorMessage</div>
+            }
+
+            <!-- Recipe Identity Section -->
+            <div class="row g-3 mb-4 section-row">
+                <div class="col-lg-3 col-md-4">
+                    <label class="form-label small fw-bold">Recipe Name <span class="text-danger">*</span></label>
+                    <input type="text" @bind="model.RecipeName" class="form-control form-control-sm" placeholder="Enter Recipe Name" />
+                </div>
+                <div class="col-lg-2 col-md-4">
+                    <label class="form-label small fw-bold">Recipe UOM Name <span class="text-danger">*</span></label>
+                    <select @bind="model.RecipeUOMName" class="form-select form-select-sm">
+                        <option value="">Select RecipeUOM</option>
+                        @if (uomOptions != null)
                         {
-                            <option value="@opt.Value">@opt.Text</option>
+                            @foreach (var opt in uomOptions)
+                            {
+                                <option value="@opt.Value">@opt.Text</option>
+                            }
                         }
-                    }
-                </select>
-            </div>
-        </div>
-        <div class="col-md-2">
-            <div class="form-group mb-3">
-                <label class="form-label text-danger">Cost Unit *</label>
-                <input type="number" step="0.01" @bind="model.CostUnit" class="form-control text-end" />
-            </div>
-        </div>
-        <div class="col-md-2">
-            <div class="form-group mb-3">
-                <label class="form-label text-danger">Labour Cost *</label>
-                <input type="number" step="0.01" @bind="model.LabourCost" class="form-control text-end" />
-            </div>
-        </div>
-        <div class="col-md-2">
-            <div class="form-group mb-3">
-                <label class="form-label">Status</label>
-                <div class="form-check form-switch mt-2">
-                    <input class="form-check-input" type="checkbox" @bind="model.IsActive" id="activeSwitch">
-                    <label class="form-check-label" for="activeSwitch">@(model.IsActive ? "Active" : "Inactive")</label>
+                    </select>
+                </div>
+                <div class="col-lg-1 col-md-2">
+                    <label class="form-label small fw-bold">Cost Unit <span class="text-danger">*</span></label>
+                    <input type="number" step="0.01" @bind="model.CostUnit" class="form-control form-control-sm text-center bg-light" readonly="@(!IsEdit)" />
+                </div>
+                <div class="col-lg-2 col-md-3">
+                    <label class="form-label small fw-bold">Labour Cost <span class="text-danger">*</span></label>
+                    <input type="number" step="0.01" @bind="model.LabourCost" class="form-control form-control-sm" placeholder="Enter Labour Cost" />
+                </div>
+                <div class="col-lg-2 col-md-3">
+                    <label class="form-label small fw-bold">High Density Rate <span class="text-danger">*</span></label>
+                    <input type="number" step="0.01" @bind="model.HighDensityRate" class="form-control form-control-sm" placeholder="Enter High Density Rate" />
+                </div>
+                <div class="col-lg-2 col-md-6">
+                    <label class="form-label small fw-bold d-block">Status <span class="text-danger">*</span></label>
+                    <div class="d-flex gap-3 mt-1">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="statusRadio" id="statusActive" checked="@model.IsActive" @onclick="() => model.IsActive = true">
+                            <label class="form-check-label small" for="statusActive">Active</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="statusRadio" id="statusInactive" checked="@(!model.IsActive)" @onclick="() => model.IsActive = false">
+                            <label class="form-check-label small" for="statusInactive">Inactive</label>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
-    </div>
 
-    <div class="row">
-        <div class="col-md-3">
-            <div class="form-group mb-3">
-                <label class="form-label">High Density Rate</label>
-                <input type="number" step="0.01" @bind="model.HighDensityRate" class="form-control text-end" />
+            <hr class="my-4 text-muted opacity-25" />
+
+            <!-- Material Addition Section (Match Screen 2) -->
+            <div class="row g-2 align-items-end mb-4 material-add-row">
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold">Material Item Name <span class="text-danger">*</span></label>
+                    <AbraqAccount.Components.Common.AccountSearch 
+                        Placeholder="Select Material Item" 
+                        SearchFunc='(term) => PackingService.GetPackingMaterialsAsync(term)'
+                        OnAccountSelected="OnMaterialSelectedMain"
+                        InitialValue="@currentMaterial.ItemName"
+                        CssClass="form-control-sm rounded-0" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small fw-bold">Qty <span class="text-danger">*</span></label>
+                    <input type="number" step="0.0001" @bind="currentMaterial.Qty" @bind:event="oninput" @onkeyup="CalculateValue" class="form-control form-control-sm rounded-0" placeholder="Enter Qty" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small fw-bold">UOM</label>
+                    <input type="text" @bind="currentMaterial.UOM" class="form-control form-control-sm rounded-0 bg-light" readonly />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small fw-bold">Value <span class="text-danger">*</span></label>
+                    <input type="number" step="0.01" @bind="currentMaterial.Value" class="form-control form-control-sm rounded-0" placeholder="Enter Value" />
+                </div>
+                <div class="col-md-2 d-flex gap-1">
+                    <button class="btn btn-success btn-sm flex-grow-1 rounded-0" @onclick="AddMaterialToTable">Add</button>
+                    <button class="btn btn-outline-secondary btn-sm flex-grow-1 rounded-0" @onclick="ClearMaterialRow">Clear</button>
+                </div>
+            </div>
+
+            <!-- Materials Table -->
+            <div class="table-responsive">
+                <table class="table table-bordered table-sm align-middle materials-table">
+                    <thead class="bg-light text-center small">
+                        <tr>
+                            <th style="width: 50px;">S.No</th>
+                            <th>Material Item Name</th>
+                            <th style="width: 100px;">Qty</th>
+                            <th style="width: 100px;">UOM</th>
+                            <th style="width: 120px;">Value</th>
+                            <th style="width: 80px;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="small">
+                        @if (model.Materials == null || !model.Materials.Any())
+                        {
+                            <tr>
+                                <td colspan="6" class="text-center py-3 text-muted italic">No materials added yet.</td>
+                            </tr>
+                        }
+                        else
+                        {
+                            int sno = 1;
+                            @foreach (var mat in model.Materials)
+                            {
+                                <tr>
+                                    <td class="text-center">@(sno++)</td>
+                                    <td>@(mat.PurchaseItem?.ItemName ?? "Unknown")</td>
+                                    <td class="text-center">@mat.Qty.ToString("G29")</td>
+                                    <td class="text-center">@mat.UOM</td>
+                                    <td class="text-end pe-3">@mat.Value.ToString("N2")</td>
+                                    <td class="text-center">
+                                        <button class="btn btn-link btn-sm text-danger p-0" @onclick="() => model.Materials.Remove(mat)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                    <tfoot class="bg-light fw-bold">
+                        <tr>
+                            <td colspan="4" class="text-end pe-3">Total Value</td>
+                            <td class="text-end pe-3 text-primary">@TotalValue.ToString("N2")</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            <div class="d-flex justify-content-end gap-2 mt-4">
+                <button class="btn btn-dark shadow-sm px-4" @onclick="SubmitForm" disabled="@isSubmitting">
+                    @(isSubmitting ? "Saving..." : "Save")
+                </button>
+                <button class="btn btn-outline-secondary shadow-sm px-4" @onclick="Cancel">Cancel</button>
             </div>
         </div>
-    </div>
-
-    <div class="materials-section mt-4">
-        <h5>Recipe Materials</h5>
-        <div class="table-responsive">
-            <table class="table table-bordered align-middle">
-                <thead class="table-light">
-                    <tr>
-                        <th>Material Item</th>
-                        <th style="width: 100px;">UOM</th>
-                        <th style="width: 120px;">Qty</th>
-                        <th style="width: 150px;">Value</th>
-                        <th style="width: 40px;"></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var mat in model.Materials)
-                    {
-                        <tr>
-                            <td class="position-static" style="min-width: 300px;">
-                                <AbraqAccount.Components.Common.AccountSearch 
-                                    Placeholder="Search Material..." 
-                                    SearchFunc='(term) => PackingService.GetPackingMaterialsAsync(term)'
-                                    OnAccountSelected="(acc) => OnMaterialSelected(mat, acc)"
-                                    InitialValue="@mat.PurchaseItem?.ItemName" />
-                            </td>
-                            <td><input type="text" @bind="mat.UOM" class="form-control form-control-sm" disabled /></td>
-                            <td><input type="number" step="0.0001" value="@mat.Qty" @oninput="(e) => UpdateMaterial(mat, e, 'Q')" class="form-control form-control-sm text-end" /></td>
-                            <td><input type="number" step="0.01" value="@mat.Value" @oninput="(e) => UpdateMaterial(mat, e, 'V')" class="form-control form-control-sm text-end" /></td>
-                            <td>
-                                <button class="btn btn-outline-danger btn-sm p-0 px-1" @onclick="() => model.Materials.Remove(mat)">
-                                    <i class="bi bi-dash"></i>
-                                </button>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-        <button class="btn btn-outline-primary btn-sm" @onclick="AddMaterial">
-            <i class="bi bi-plus"></i> Add Material
-        </button>
-    </div>
-
-    <div class="footer-summary mt-4 p-3 bg-light rounded text-end">
-        <span class="h5">Total Value: <span class="text-primary">@TotalValue.ToString("N2")</span></span>
     </div>
 </div>
 
 <style>
-    .form-card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.05); }
-    .form-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid #eee; }
+    .content-header { background: #fff; padding: 0.75rem 0; margin-bottom: 0; }
+    .breadcrumb-item { font-size: 0.85rem; color: #6c757d; }
+    .breadcrumb-item + .breadcrumb-item::before { content: ">"; padding: 0 0.5rem; color: #adb5bd; }
+
+    .card { border-radius: 8px; }
+    .card-header .card-title { font-size: 1.1rem; font-weight: 500; }
+
+    .form-label { color: #555; margin-bottom: 0.35rem; }
+    .form-control, .form-select { border-color: #ddd; }
+    .form-control:focus, .form-select:focus { border-color: #0d6efd; box-shadow: 0 0 0 0.2rem rgba(13,110,253,0.1); }
+
+    .materials-table thead th { font-weight: 600; text-transform: none; color: #333; }
+    .materials-table tbody td { padding: 0.5rem 0.4rem; }
+    
+    .section-row { background: #fafafa; padding: 1rem; border-radius: 8px; border: 1px solid #f0f0f0; }
+    .material-add-row { background: #fff; padding-bottom: 1rem; }
 </style>
 
 @code {
-    [Parameter] public int? Id { get; set; }
+    [Parameter] public long? Id { get; set; }
     private PackingRecipe model = new() { IsActive = true, CreatedAt = DateTime.Now, CostUnit = 1 };
     private List<SelectListItem>? uomOptions;
     private bool IsEdit => Id.HasValue;
     private bool isSubmitting;
     private string? errorMessage;
+
+    // State for temporary material entry row
+    private TempMaterial currentMaterial = new();
 
     private decimal TotalValue => model.Materials.Sum(m => m.Value);
 
@@ -162,28 +228,43 @@
                 errorMessage = "Recipe not found.";
             }
         }
-        else
-        {
-            AddMaterial();
-        }
     }
 
-    private void AddMaterial() => model.Materials.Add(new PackingRecipeMaterial { CreatedAt = DateTime.Now });
-
-    private void OnMaterialSelected(PackingRecipeMaterial mat, LookupItem lookup)
+    private void OnMaterialSelectedMain(LookupItem lookup)
     {
-        mat.PurchaseItemId = lookup.Id;
-        mat.PurchaseItem = new PurchaseItem { Id = lookup.Id, ItemName = lookup.Name };
-        mat.UOM = lookup.UOM ?? "";
+        currentMaterial.Id = lookup.Id;
+        currentMaterial.ItemName = lookup.Name;
+        currentMaterial.UOM = lookup.UOM ?? "";
+        currentMaterial.Rate = lookup.Rate ?? 0;
+        CalculateValue();
     }
 
-    private void UpdateMaterial(PackingRecipeMaterial mat, ChangeEventArgs e, char field)
+    private void CalculateValue()
     {
-        if (decimal.TryParse(e.Value?.ToString(), out decimal val))
+        currentMaterial.Value = currentMaterial.Qty * currentMaterial.Rate;
+    }
+
+    private void AddMaterialToTable()
+    {
+        if (currentMaterial.Id == 0) return;
+        if (currentMaterial.Qty <= 0) return;
+
+        model.Materials.Add(new PackingRecipeMaterial
         {
-            if (field == 'Q') mat.Qty = val;
-            else if (field == 'V') mat.Value = val;
-        }
+            PurchaseItemId = currentMaterial.Id,
+            PurchaseItem = new PurchaseItem { Id = currentMaterial.Id, ItemName = currentMaterial.ItemName },
+            Qty = currentMaterial.Qty,
+            UOM = currentMaterial.UOM,
+            Value = currentMaterial.Value,
+            CreatedAt = DateTime.Now
+        });
+
+        ClearMaterialRow();
+    }
+
+    private void ClearMaterialRow()
+    {
+        currentMaterial = new TempMaterial();
     }
 
     private async Task SubmitForm()
@@ -196,9 +277,7 @@
 
         model.Value = TotalValue;
 
-        var result = IsEdit 
-            ? await PackingService.UpdatePackingRecipeAsync(Id!.Value, model, model.Materials)
-            : await CreateRecipeWorkaround();
+        var result = await PackingService.SavePackingRecipeAsync(model, model.Materials);
 
         if (result.success)
         {
@@ -211,17 +290,18 @@
         isSubmitting = false;
     }
 
-    private async Task<(bool success, string message)> CreateRecipeWorkaround()
-    {
-        // PackingService.CreatePackingRecipeAsync takes IFormCollection. 
-        // I should probably add a clean Create method to IPackingService.
-        // For now, I'll update the implementation to have a clean version or I'll hack it.
-        // Let's just use Update with 0 if it handles it, or I'll add the method.
-        return await PackingService.UpdatePackingRecipeAsync(0, model, model.Materials);
-    }
-
     private void Cancel()
     {
         Navigation.NavigateTo("/inventory/packing-recipes");
+    }
+
+    private class TempMaterial
+    {
+        public int Id { get; set; }
+        public string ItemName { get; set; } = "";
+        public decimal Qty { get; set; }
+        public string UOM { get; set; } = "";
+        public decimal Value { get; set; }
+        public decimal Rate { get; set; }
     }
 }

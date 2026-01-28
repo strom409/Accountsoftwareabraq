@@ -61,7 +61,7 @@ public class PurchaseReceive
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     
     // Navigation properties
-    public Vendor? Vendor { get; set; }
+    public BankMaster? Vendor { get; set; }
     public MasterGroup? ExpenseGroup { get; set; }
     public MasterSubGroup? ExpenseSubGroup { get; set; }
     public SubGroupLedger? ExpenseLedger { get; set; }
