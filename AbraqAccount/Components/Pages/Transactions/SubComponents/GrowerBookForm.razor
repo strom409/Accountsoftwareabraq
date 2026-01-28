@@ -6,7 +6,7 @@
 
 <div class="transaction-form">
     <div class="form-header">
-        <h3 class="form-title">Grower Book - @(string.IsNullOrEmpty(VoucherNo) ? "Add" : "Edit")</h3>
+        <h3 class="form-title">Grower Book - @(IsReadOnly ? "Details" : (string.IsNullOrEmpty(VoucherNo) ? "Add" : "Edit"))</h3>
     </div>
 
     <EditForm Model="@item" OnValidSubmit="SubmitForm">
@@ -14,72 +14,125 @@
         
         <div class="row g-3">
             <!-- Entry For & Transaction Date -->
+
             <div class="col-md-6">
-                <label class="form-label">Entry For</label>
-                <InputSelect @bind-Value="item.EntryForId" class="form-select" @oninput="OnEntryForChanged">
-                    <option value="0">Select Entry For</option>
-                    @if (entryProfiles != null)
-                    {
-                        foreach (var p in entryProfiles)
+                <label class="form-label text-muted">Entry For</label>
+                @if (IsReadOnly)
+                {
+                    <div class="fw-bold fs-6">@(entryProfiles?.FirstOrDefault(p => p.Id == item.EntryForId)?.Name ?? "")</div>
+                }
+                else
+                {
+                    <InputSelect @bind-Value="item.EntryForId" class="form-select" @oninput="OnEntryForChanged">
+                        <option value="0">Select Entry For</option>
+                        @if (entryProfiles != null)
                         {
-                            <option value="@p.Id">@p.Name</option>
+                            foreach (var p in entryProfiles)
+                            {
+                                <option value="@p.Id">@p.Name</option>
+                            }
                         }
-                    }
-                </InputSelect>
+                    </InputSelect>
+                }
             </div>
             
             <div class="col-md-6">
-                <label class="form-label">Transaction Date <span class="text-danger">*</span></label>
-                <InputDate @bind-Value="item.EntryDate" class="form-control" />
+                <label class="form-label text-muted">Transaction Date <span class="text-danger">*</span></label>
+                @if (IsReadOnly)
+                {
+                    <div class="fw-bold fs-6">@item.EntryDate.ToString("dd/MM/yyyy")</div>
+                }
+                else
+                {
+                    <InputDate @bind-Value="item.EntryDate" class="form-control" />
+                }
             </div>
 
             <!-- Amount & Unit -->
             <div class="col-md-6">
-                <label class="form-label">Amount <span class="text-danger">*</span></label>
-                <InputNumber @bind-Value="item.Amount" class="form-control" min="0.01" step="0.01" />
+                <label class="form-label text-muted">Amount <span class="text-danger">*</span></label>
+                @if (IsReadOnly)
+                {
+                    <div class="fw-bold fs-6 text-primary">@item.Amount.ToString("N2")</div>
+                }
+                else
+                {
+                    <InputNumber @bind-Value="item.Amount" class="form-control" min="0.01" step="0.01" />
+                }
             </div>
 
             <div class="col-md-6">
-                <label class="form-label">Unit <span class="text-danger">*</span></label>
-                <div class="input-group">
-                    <InputSelect @bind-Value="item.Unit" class="form-select">
-                        <option value="">Select Unit</option>
-                        @if (units != null)
-                        {
-                            foreach (var u in units)
+                <label class="form-label text-muted">Unit <span class="text-danger">*</span></label>
+                @if (IsReadOnly)
+                {
+                    <div class="fw-bold fs-6">@item.Unit</div>
+                }
+                else
+                {
+                    <div class="input-group">
+                        <InputSelect @bind-Value="item.Unit" class="form-select">
+                            <option value="">Select Unit</option>
+                            @if (units != null)
                             {
-                                <option value="@u">@u</option>
+                                foreach (var u in units)
+                                {
+                                    <option value="@u">@u</option>
+                                }
                             }
-                        }
-                    </InputSelect>
-                </div>
+                        </InputSelect>
+                    </div>
+                }
             </div>
 
             <!-- Grower Credit & Debit -->
+            <!-- Grower Credit & Debit -->
             <div class="col-md-6">
-                <AccountSearch Label="Grower Credit *" 
-                              SearchFunc="@(term => SearchCreditAccounts(term))" 
-                              OnAccountSelected="@(a => { item.CreditAccountId = a.Id; item.CreditAccountType = "BankMaster"; creditAccountName = a.Name; })"
-                              InitialValue="@creditAccountName"
-                              Required="true"
-                              Disabled="@(item.EntryForId == null || item.EntryForId == 0)"
-                              CssClass="@(item.CreditAccountId == 0 ? "is-invalid" : "")" />
+                <label class="form-label text-muted">Grower Credit *</label>
+                @if (IsReadOnly)
+                {
+                    <div class="fw-bold fs-6">@creditAccountName</div>
+                }
+                else
+                {
+                    <AccountSearch Label="" 
+                                  SearchFunc="@(term => SearchCreditAccounts(term))" 
+                                  OnAccountSelected="@(a => { item.CreditAccountId = a.Id; item.CreditAccountType = "BankMaster"; creditAccountName = a.Name; })"
+                                  InitialValue="@creditAccountName"
+                                  Required="true"
+                                  Disabled="@(item.EntryForId == null || item.EntryForId == 0)"
+                                  CssClass="@(item.CreditAccountId == 0 ? "is-invalid" : "")" />
+                }
             </div>
 
             <div class="col-md-6">
-                <AccountSearch Label="Grower Debit *" 
-                              SearchFunc="@(term => SearchDebitAccounts(term))" 
-                              OnAccountSelected="@(a => { item.DebitAccountId = a.Id; item.DebitAccountType = "BankMaster"; debitAccountName = a.Name; })"
-                              InitialValue="@debitAccountName"
-                              Required="true"
-                              Disabled="@(item.EntryForId == null || item.EntryForId == 0)"
-                              CssClass="@(item.DebitAccountId == 0 ? "is-invalid" : "")" />
+                <label class="form-label text-muted">Grower Debit *</label>
+                @if (IsReadOnly)
+                {
+                    <div class="fw-bold fs-6">@debitAccountName</div>
+                }
+                else
+                {
+                    <AccountSearch Label="" 
+                                  SearchFunc="@(term => SearchDebitAccounts(term))" 
+                                  OnAccountSelected="@(a => { item.DebitAccountId = a.Id; item.DebitAccountType = "BankMaster"; debitAccountName = a.Name; })"
+                                  InitialValue="@debitAccountName"
+                                  Required="true"
+                                  Disabled="@(item.EntryForId == null || item.EntryForId == 0)"
+                                  CssClass="@(item.DebitAccountId == 0 ? "is-invalid" : "")" />
+                }
             </div>
 
             <!-- Narration -->
             <div class="col-12">
-                <label class="form-label">Particular</label>
-                <InputTextArea @bind-Value="item.Narration" class="form-control" rows="2" placeholder="Enter Particular" />
+                <label class="form-label text-muted">Particular</label>
+                @if (IsReadOnly)
+                {
+                     <div class="fw-bold fs-6">@(string.IsNullOrEmpty(item.Narration) ? "-" : item.Narration)</div>
+                }
+                else
+                {
+                    <InputTextArea @bind-Value="item.Narration" class="form-control" rows="2" placeholder="Enter Particular" />
+                }
             </div>
             
             @if (!string.IsNullOrEmpty(errorMessage))
@@ -91,14 +144,23 @@
 
             <!-- Buttons -->
             <div class="col-12 d-flex justify-content-end gap-2 mt-4">
-                 <button type="submit" class="btn btn-primary" disabled="@isSubmitting">
-                    @if (isSubmitting)
-                    {
-                        <span class="spinner-border spinner-border-sm me-1"></span>
-                    }
-                    @(string.IsNullOrEmpty(VoucherNo) ? "Save" : "Update")
-                </button>
-                <button type="button" class="btn btn-secondary" @onclick="Cancel">Cancel</button>
+                @if (IsReadOnly)
+                {
+                    <a href="grower-book/index" class="btn btn-secondary text-decoration-none d-inline-flex align-items-center">
+                        <i class="bi bi-arrow-left me-1"></i> Back to List
+                    </a>
+                }
+                else
+                {
+                     <button type="submit" class="btn btn-primary" disabled="@isSubmitting">
+                        @if (isSubmitting)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        @(string.IsNullOrEmpty(VoucherNo) ? "Save" : "Update")
+                    </button>
+                    <button type="button" class="btn btn-secondary" @onclick="Cancel">Cancel</button>
+                }
             </div>
         </div>
     </EditForm>
@@ -106,6 +168,7 @@
 
 @code {
     [Parameter] public string? VoucherNo { get; set; }
+    [Parameter] public bool IsReadOnly { get; set; }
     [Parameter] public EventCallback OnSaved { get; set; } // If used as a component
     [Inject] public NavigationManager Navigation { get; set; } = default!;
 

@@ -1,0 +1,14 @@
+@page "/transactions/credit-note/details/{Id:int}"
+@using AbraqAccount.Components.Pages.Transactions.SubComponents
+
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <CreditNoteForm Id="@Id" IsReadOnly="true" />
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+}

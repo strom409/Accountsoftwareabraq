@@ -2,6 +2,7 @@
 @using AbraqAccount.Services.Interfaces
 @inject IReceiptEntryService ReceiptEntryService
 @inject IJSRuntime JS
+@using AbraqAccount.Components.Common
 
 <div class="filter-section">
     <div class="filter-group">
@@ -50,12 +51,24 @@
         <table class="table-notes">
             <thead>
                 <tr>
-                    <th>Unit</th>
-                    <th>Voucher No</th>
-                    <th>Date</th>
-                    <th>Account Name</th>
-                    <th>Amount</th>
-                    <th>Status</th>
+                    <th>
+                        <ColumnFilter Title="Unit" TItem="ReceiptEntryGroupViewModel" TValue="string" Items="originalReceiptGroups" Property="@(x => x.Unit)" OnFilter="@(v => HandleColumnFilter("Unit", v))" Align="left" />
+                    </th>
+                    <th>
+                        <ColumnFilter Title="Voucher No" TItem="ReceiptEntryGroupViewModel" TValue="string" Items="originalReceiptGroups" Property="@(x => x.VoucherNo)" OnFilter="@(v => HandleColumnFilter("VoucherNo", v))" Align="left" />
+                    </th>
+                    <th>
+                        <ColumnFilter Title="Date" TItem="ReceiptEntryGroupViewModel" TValue="string" Items="originalReceiptGroups" Property="@(x => x.ReceiptDate.ToString("dd/MM/yyyy"))" OnFilter="@(v => HandleColumnFilter("Date", v))" Align="left" />
+                    </th>
+                    <th>
+                        <ColumnFilter Title="Account Name" TItem="ReceiptEntryGroupViewModel" TValue="string" Items="originalReceiptGroups" Property="@(x => (x.CreditEntry?.AccountName ?? "") + (x.DebitEntry != null ? " / " + x.DebitEntry.AccountName : ""))" OnFilter="@(v => HandleColumnFilter("AccountName", v))" />
+                    </th>
+                    <th>
+                        <ColumnFilter Title="Amount" TItem="ReceiptEntryGroupViewModel" TValue="decimal" Items="originalReceiptGroups" Property="@(x => x.ReceiptAmount)" OnFilter="@(v => HandleColumnFilter("ReceiptAmount", v))" />
+                    </th>
+                    <th>
+                        <ColumnFilter Title="Status" TItem="ReceiptEntryGroupViewModel" TValue="string" Items="originalReceiptGroups" Property="@(x => x.Status)" OnFilter="@(v => HandleColumnFilter("Status", v))" />
+                    </th>
                     <th>Action</th>
                 </tr>
             </thead>
@@ -172,7 +185,7 @@
     .btn-link { background: none; border: none; color: #007bff; text-decoration: underline; cursor: pointer; padding: 0; font-size: inherit; text-align: left; }
     
     .table-card { background: white; border: 1px solid #e0e0e0; border-radius: 4px; padding: 1.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    .table-wrapper { overflow-x: auto; }
+    .table-wrapper { overflow-x: auto; min-height: 400px; }
     .table-notes { width: 100%; border-collapse: collapse; }
     .table-notes th { padding: 0.75rem; text-align: left; background: #f8f9fa; border-bottom: 2px solid #dee2e6; }
     .table-notes td { padding: 0.75rem; border-bottom: 1px solid #dee2e6; }
@@ -217,6 +230,53 @@
         await LoadData();
     }
 
+    private void FilterLocalData()
+    {
+        if (originalReceiptGroups == null) return;
+        
+        var query = originalReceiptGroups.AsEnumerable();
+
+        foreach(var kvp in activeColumnFilters)
+        {
+             var col = kvp.Key;
+             var filterValues = kvp.Value as System.Collections.IEnumerable;
+             if (filterValues == null) continue;
+             
+             query = query.Where(item => {
+                 object? val = col switch {
+                     "Unit" => item.Unit,
+                     "VoucherNo" => item.VoucherNo,
+                     "Date" => item.ReceiptDate.ToString("dd/MM/yyyy"),
+                     "AccountName" => (item.CreditEntry?.AccountName ?? "") + (item.DebitEntry != null ? " / " + item.DebitEntry.AccountName : ""),
+                     "ReceiptAmount" => item.ReceiptAmount,
+                     "Status" => item.Status,
+                     _ => null
+                 };
+                 
+                 foreach(var f in filterValues) {
+                     if (object.Equals(f, val)) return true;
+                 }
+                 return false;
+             });
+        }
+        
+        receiptGroups = query.ToList();
+    }
+
+    private Dictionary<string, object> activeColumnFilters = new();
+
+    private void HandleColumnFilter<T>(string column, List<T> selectedValues)
+    {
+        if (selectedValues == null || !selectedValues.Any()) 
+            activeColumnFilters.Remove(column);
+        else 
+            activeColumnFilters[column] = selectedValues;
+
+        FilterLocalData();
+    }
+
+    private List<ReceiptEntryGroupViewModel> originalReceiptGroups = new();
+
     private async Task LoadData()
     {
         var result = await ReceiptEntryService.GetReceiptEntriesAsync(
@@ -230,8 +290,11 @@
             currentPage,
             pageSize
         );
-        receiptGroups = result.groups;
+        originalReceiptGroups = result.groups ?? new List<ReceiptEntryGroupViewModel>();
+        receiptGroups = originalReceiptGroups.ToList();
         totalCount = result.totalCount;
+        
+        if (activeColumnFilters.Any()) FilterLocalData();
     }
 
     private async Task ClearFilters()

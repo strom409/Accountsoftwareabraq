@@ -3,6 +3,7 @@
 @using Microsoft.AspNetCore.Mvc.Rendering
 @inject ICreditNoteService CreditNoteService
 @inject IJSRuntime JS
+@using AbraqAccount.Components.Common
 
 <div class="filter-section">
     <div class="filter-group">
@@ -78,16 +79,31 @@
         <table class="table-notes">
             <thead>
                 <tr>
-                    <th>Credit No</th>
-                    <th>Unit</th>
-                    <th>Date</th>
-                    <th>Credit</th>
-                    <th>Debit</th>
-                    <th>Amount</th>
-                    <th>Status</th>
+                    <th>
+                        <ColumnFilter Title="Credit No" TItem="CreditNote" TValue="string" Items="originalCreditNotes" Property="@(x => x.CreditNoteNo)" OnFilter="@(v => HandleColumnFilter("CreditNoteNo", v))" Align="left" />
+                    </th>
+                    <th>
+                        <ColumnFilter Title="Unit" TItem="CreditNote" TValue="string" Items="originalCreditNotes" Property="@(x => x.Unit)" OnFilter="@(v => HandleColumnFilter("Unit", v))" Align="left" />
+                    </th>
+                    <th>
+                        <ColumnFilter Title="Date" TItem="CreditNote" TValue="string" Items="originalCreditNotes" Property="@(x => x.CreditNoteDate.ToString("dd/MM/yyyy"))" OnFilter="@(v => HandleColumnFilter("Date", v))" Align="left" />
+                    </th>
+                    <th>
+                        <ColumnFilter Title="Credit" TItem="CreditNote" TValue="string" Items="originalCreditNotes" Property="@(x => x.CreditAccountName ?? "-")" OnFilter="@(v => HandleColumnFilter("CreditAccountName", v))" />
+                    </th>
+                    <th>
+                        <ColumnFilter Title="Debit" TItem="CreditNote" TValue="string" Items="originalCreditNotes" Property="@(x => x.DebitAccountName ?? "-")" OnFilter="@(v => HandleColumnFilter("DebitAccountName", v))" />
+                    </th>
+                    <th>
+                        <ColumnFilter Title="Amount" TItem="CreditNote" TValue="decimal?" Items="originalCreditNotes" Property="@(x => x.Amount)" OnFilter="@(v => HandleColumnFilter("Amount", v))" />
+                    </th>
+                    <th>
+                        <ColumnFilter Title="Status" TItem="CreditNote" TValue="string" Items="originalCreditNotes" Property="@(x => x.Status)" OnFilter="@(v => HandleColumnFilter("Status", v))" />
+                    </th>
                     <th>Action</th>
                 </tr>
             </thead>
+            
             <tbody>
                 @if (creditNotes == null)
                 {
@@ -190,7 +206,7 @@
     .btn-search { background-color: #6c757d; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
     .btn-clear { background-color: #e9ecef; color: #333; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
     .table-card { background: white; border: 1px solid #e0e0e0; border-radius: 4px; padding: 1.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    .table-wrapper { overflow-x: auto; }
+    .table-wrapper { overflow-x: auto; min-height: 400px; }
     .table-notes { width: 100%; border-collapse: collapse; }
     .table-notes th { padding: 0.75rem; text-align: left; background: #f8f9fa; border-bottom: 2px solid #dee2e6; }
     .table-notes td { padding: 0.75rem; border-bottom: 1px solid #dee2e6; }
@@ -243,6 +259,54 @@
         growerGroups = viewBag.GrowerGroups;
     }
 
+    private void FilterLocalData()
+    {
+        if (originalCreditNotes == null) return;
+        
+        var query = originalCreditNotes.AsEnumerable();
+
+        foreach(var kvp in activeColumnFilters)
+        {
+             var col = kvp.Key;
+             var filterValues = kvp.Value as System.Collections.IEnumerable;
+             if (filterValues == null) continue;
+             
+             query = query.Where(item => {
+                 object? val = col switch {
+                     "CreditNoteNo" => item.CreditNoteNo,
+                     "Unit" => item.Unit,
+                     "Date" => item.CreditNoteDate.ToString("dd/MM/yyyy"),
+                     "CreditAccountName" => item.CreditAccountName ?? "-",
+                     "DebitAccountName" => item.DebitAccountName ?? "-",
+                     "Amount" => item.Amount,
+                     "Status" => item.Status,
+                     _ => null
+                 };
+                 
+                 foreach(var f in filterValues) {
+                     if (object.Equals(f, val)) return true;
+                 }
+                 return false;
+             });
+        }
+        
+        creditNotes = query.ToList();
+    }
+
+    private Dictionary<string, object> activeColumnFilters = new();
+
+    private void HandleColumnFilter<T>(string column, List<T> selectedValues)
+    {
+        if (selectedValues == null || !selectedValues.Any()) 
+            activeColumnFilters.Remove(column);
+        else 
+            activeColumnFilters[column] = selectedValues;
+
+        FilterLocalData();
+    }
+
+    private List<CreditNote> originalCreditNotes = new();
+
     private async Task LoadData()
     {
         try
@@ -258,13 +322,17 @@
                 currentPage,
                 pageSize
             );
-            creditNotes = result.notes ?? new List<CreditNote>();
+            originalCreditNotes = result.notes ?? new List<CreditNote>();
+            creditNotes = originalCreditNotes.ToList();
             totalCount = result.totalCount;
+            
+            if (activeColumnFilters.Any()) FilterLocalData();
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error loading Credit Notes: {ex.Message}");
             creditNotes = new List<CreditNote>();
+            originalCreditNotes = new List<CreditNote>();
         }
     }
 

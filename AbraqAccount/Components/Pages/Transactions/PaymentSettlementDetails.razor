@@ -1,0 +1,14 @@
+@page "/transactions/payment-settlement/details/{*PANumber}"
+@using AbraqAccount.Components.Pages.Transactions.SubComponents
+
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <PaymentSettlementForm PANumber="@PANumber" IsReadOnly="true" />
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? PANumber { get; set; }
+}
