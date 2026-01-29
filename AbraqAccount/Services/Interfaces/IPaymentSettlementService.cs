@@ -17,15 +17,15 @@ public interface IPaymentSettlementService
         int page,
         int pageSize);
 
-    Task<(bool success, string message)> CreateMultipleSettlementsAsync(PaymentSettlementBatchModel model, string currentUser);
-    Task<(bool success, string message)> DeleteSettlementAsync(int id, string currentUser);
-    Task<(bool success, string message)> ApproveSettlementAsync(int id, string currentUser);
-    Task<(bool success, string message)> UnapproveSettlementAsync(int id, string currentUser);
+    Task<(bool success, string message)> CreateMultipleSettlementsAsync(PaymentSettlementBatchModel model);
+    Task<(bool success, string message)> DeleteSettlementAsync(int id);
+    Task<(bool success, string message)> ApproveSettlementAsync(int id);
+    Task<(bool success, string message)> UnapproveSettlementAsync(int id);
     Task<IEnumerable<LookupItem>> GetAccountsAsync(string? searchTerm, int? paymentFromId = null, string? type = null);
     Task<IEnumerable<LookupItem>> GetEntryProfilesAsync();
     Task<PaymentSettlement?> GetSettlementByIdAsync(int id);
     Task<List<PaymentSettlement>> GetSettlementEntriesByPANumberAsync(string paNumber);
-    Task<(bool success, string message)> UpdateSettlementAsync(PaymentSettlementBatchModel model, string paNumber, string currentUser);
+    Task<(bool success, string message)> UpdateSettlementAsync(PaymentSettlementBatchModel model, string paNumber);
     Task<object?> GetPADetailsAsync(string paNumber);
     
     Task LoadDropdownsAsync(dynamic viewBag);

@@ -38,12 +38,18 @@ public class GeneralEntry
     public string Status { get; set; } = "Unapproved"; // Unapproved, Approved
     
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public string? CreatedBy { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    public string? UpdatedBy { get; set; }
     
     public string? Unit { get; set; }
     public bool IsActive { get; set; } = true;
     
     [NotMapped]
     public string? VoucherType { get; set; } // "Receipt Entry", "Debit Note", "Credit Note", "Journal Entry Book"
+
+    [NotMapped]
+    public string? PaymentType { get; set; } // "Mobile Pay", "Cash", etc.
 
     [NotMapped]
     public string DebitAccountName

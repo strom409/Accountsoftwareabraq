@@ -367,18 +367,18 @@
     {
         if (pendingAction == "Approve")
         {
-             if (pendingCreditId > 0) await ReceiptEntryService.ApproveReceiptEntryAsync(pendingCreditId, "Admin");
-             if (pendingDebitId > 0) await ReceiptEntryService.ApproveReceiptEntryAsync(pendingDebitId, "Admin");
+             if (pendingCreditId > 0) await ReceiptEntryService.ApproveReceiptEntryAsync(pendingCreditId);
+             if (pendingDebitId > 0) await ReceiptEntryService.ApproveReceiptEntryAsync(pendingDebitId);
         }
         else if (pendingAction == "Unapprove")
         {
-            if (pendingCreditId > 0) await ReceiptEntryService.UnapproveReceiptEntryAsync(pendingCreditId, "Admin");
-            if (pendingDebitId > 0) await ReceiptEntryService.UnapproveReceiptEntryAsync(pendingDebitId, "Admin");
+            if (pendingCreditId > 0) await ReceiptEntryService.UnapproveReceiptEntryAsync(pendingCreditId);
+            if (pendingDebitId > 0) await ReceiptEntryService.UnapproveReceiptEntryAsync(pendingDebitId);
         }
         else if (pendingAction == "Delete")
         {
-            if (pendingCreditId > 0) await ReceiptEntryService.DeleteReceiptEntryAsync(pendingCreditId, "Admin");
-            if (pendingDebitId > 0) await ReceiptEntryService.DeleteReceiptEntryAsync(pendingDebitId, "Admin");
+            if (pendingCreditId > 0) await ReceiptEntryService.DeleteReceiptEntryAsync(pendingCreditId);
+            if (pendingDebitId > 0) await ReceiptEntryService.DeleteReceiptEntryAsync(pendingDebitId);
         }
         await LoadData();
     }

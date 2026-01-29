@@ -375,15 +375,15 @@
     {
         if (pendingAction == "Approve")
         {
-            await PaymentSettlementService.ApproveSettlementAsync(pendingId, "Admin");
+            await PaymentSettlementService.ApproveSettlementAsync(pendingId);
         }
         else if (pendingAction == "Unapprove")
         {
-            await PaymentSettlementService.UnapproveSettlementAsync(pendingId, "Admin");
+            await PaymentSettlementService.UnapproveSettlementAsync(pendingId);
         }
         else if (pendingAction == "Delete")
         {
-            await PaymentSettlementService.DeleteSettlementAsync(pendingId, "Admin");
+            await PaymentSettlementService.DeleteSettlementAsync(pendingId);
         }
         await LoadData();
     }

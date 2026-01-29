@@ -4,6 +4,8 @@ using AbraqAccount.Models;
 using AbraqAccount.Services.Interfaces;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using AbraqAccount.Models.Common;
+using AbraqAccount.Extensions;
 
 namespace AbraqAccount.Services.Implementations;
 
@@ -190,7 +192,8 @@ public class PackingService : IPackingService
             // Log History
             try
             {
-                var username = _httpContextAccessor.HttpContext?.Session.GetString("Username") ?? "Unknown";
+                var userSession = _httpContextAccessor.HttpContext?.Session.GetObject<UserSession>(SessionKeys.UserSession);
+                var username = userSession?.Username ?? "Unknown";
                 var history = new TransactionHistory
                 {
                     VoucherNo = existing.RecipeCode ?? existing.Recipeid.ToString("D4"),

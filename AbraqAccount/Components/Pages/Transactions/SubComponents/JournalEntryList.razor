@@ -393,15 +393,15 @@
         {
             if (pendingAction == "Approve")
             {
-                await GeneralEntryService.ApproveEntryAsync(entry.Id, "Admin");
+                await GeneralEntryService.ApproveEntryAsync(entry.Id);
             }
             else if (pendingAction == "Unapprove")
             {
-                await GeneralEntryService.UnapproveEntryAsync(entry.Id, "Admin");
+                await GeneralEntryService.UnapproveEntryAsync(entry.Id);
             }
             else if (pendingAction == "Delete")
             {
-                await GeneralEntryService.DeleteEntryAsync(entry.Id, "Admin");
+                await GeneralEntryService.DeleteEntryAsync(entry.Id);
             }
         }
         await LoadData();

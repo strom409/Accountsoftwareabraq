@@ -4,6 +4,9 @@ using Microsoft.EntityFrameworkCore;
 using AbraqAccount.Data;
 using AbraqAccount.Models;
 using AbraqAccount.Services.Interfaces;
+using AbraqAccount.Models.Common;
+using AbraqAccount.Extensions;
+using Microsoft.AspNetCore.Http;
 
 namespace AbraqAccount.Services.Implementations;
 
@@ -11,11 +14,28 @@ public class ReceiptEntryService : IReceiptEntryService
 {
     private readonly AppDbContext _context;
     private readonly ITransactionEntriesService _transactionService;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public ReceiptEntryService(AppDbContext context, ITransactionEntriesService transactionService)
+    public ReceiptEntryService(AppDbContext context, ITransactionEntriesService transactionService, IHttpContextAccessor httpContextAccessor)
     {
         _context = context;
         _transactionService = transactionService;
+        _httpContextAccessor = httpContextAccessor;
+    }
+
+    private string GetCurrentUsername()
+    {
+        try
+        {
+            var session = _httpContextAccessor.HttpContext?.Session;
+            if (session == null) return "Admin";
+            var userSession = session.GetObject<UserSession>(SessionKeys.UserSession);
+            return userSession?.Username ?? "Admin";
+        }
+        catch
+        {
+            return "Admin";
+        }
     }
 
     public async Task<(List<ReceiptEntryGroupViewModel> groups, int totalCount, int totalPages)> GetReceiptEntriesAsync(
@@ -206,8 +226,9 @@ public class ReceiptEntryService : IReceiptEntryService
         return (groupedViewModels, totalGroups, totalPages);
     }
 
-    public async Task<(bool success, string message)> CreateMultipleReceiptsAsync(ReceiptEntryBatchModel model, string currentUser)
+    public async Task<(bool success, string message)> CreateMultipleReceiptsAsync(ReceiptEntryBatchModel model)
     {
+        var currentUser = GetCurrentUsername();
         if (model == null || model.Entries == null || model.Entries.Count == 0)
         {
             return (false, "No entries to save.");
@@ -288,6 +309,7 @@ public class ReceiptEntryService : IReceiptEntryService
                     Narration = entryData.Narration,
                     Status = "Unapproved",
                     CreatedAt = DateTime.Now,
+                    CreatedBy = currentUser,
                     IsActive = true,
                     PaymentFromSubGroupId = entryData.PaymentFromSubGroupId,
                     Unit = entryData.Unit,
@@ -392,7 +414,7 @@ public class ReceiptEntryService : IReceiptEntryService
         }
     }
 
-    public async Task<(bool success, string message)> DeleteReceiptEntryAsync(int id, string currentUser)
+    public async Task<(bool success, string message)> DeleteReceiptEntryAsync(int id)
     {
         var entry = await _context.ReceiptEntries.FindAsync(id);
         if (entry == null)
@@ -400,6 +422,7 @@ public class ReceiptEntryService : IReceiptEntryService
             return (false, "Entry not found.");
         }
 
+        var currentUser = GetCurrentUsername();
         try
         {
             // Delete all entries with same VoucherNo
@@ -410,6 +433,8 @@ public class ReceiptEntryService : IReceiptEntryService
             foreach (var rel in relatedEntries)
             {
                 rel.IsActive = false;
+                rel.UpdatedAt = DateTime.Now;
+                rel.UpdatedBy = currentUser;
                 _context.Update(rel);
             }
 
@@ -610,10 +635,13 @@ public class ReceiptEntryService : IReceiptEntryService
             .ToListAsync();
     }
 
-    public async Task<(bool success, string message)> UpdateReceiptEntryAsync(ReceiptEntry model, string currentUser)
+
+
+    public async Task<(bool success, string message)> UpdateReceiptEntryAsync(ReceiptEntry model)
     {
         try
         {
+            var currentUser = GetCurrentUsername();
             var existing = await _context.ReceiptEntries.FindAsync(model.Id);
             if (existing == null) return (false, "Entry not found");
 
@@ -627,6 +655,8 @@ public class ReceiptEntryService : IReceiptEntryService
             existing.RefNoChequeUTR = model.RefNoChequeUTR;
             existing.Narration = model.Narration;
             existing.Status = model.Status;
+            existing.UpdatedAt = DateTime.Now;
+            existing.UpdatedBy = currentUser;
             
             _context.Update(existing);
             await _context.SaveChangesAsync();
@@ -640,10 +670,11 @@ public class ReceiptEntryService : IReceiptEntryService
 
 
 
-    public async Task<(bool success, string message)> UnapproveReceiptEntryAsync(int id, string currentUser)
+    public async Task<(bool success, string message)> UnapproveReceiptEntryAsync(int id)
     {
         try
         {
+            var currentUser = GetCurrentUsername();
             var entry = await _context.ReceiptEntries.FindAsync(id);
             if (entry == null) return (false, "Entry not found");
 
@@ -652,6 +683,8 @@ public class ReceiptEntryService : IReceiptEntryService
             foreach(var e in entries) 
             {
                 e.Status = "Unapproved";
+                e.UpdatedAt = DateTime.Now;
+                e.UpdatedBy = currentUser;
             }
             await _context.SaveChangesAsync();
 
@@ -710,12 +743,14 @@ public class ReceiptEntryService : IReceiptEntryService
         return "";
     }
 
-    public async Task<(bool success, string message)> UpdateReceiptVoucherAsync(string voucherNo, ReceiptEntryBatchModel model, string currentUser)
+    public async Task<(bool success, string message)> UpdateReceiptVoucherAsync(string voucherNo, ReceiptEntryBatchModel model)
     {
         if (model == null || model.Entries == null || model.Entries.Count == 0)
         {
             return (false, "No entries to save.");
         }
+
+        var currentUser = GetCurrentUsername();
 
         var strategy = _context.Database.CreateExecutionStrategy();
 
@@ -787,6 +822,7 @@ public class ReceiptEntryService : IReceiptEntryService
                         Narration = entryData.Narration,
                         Status = existingEntries.FirstOrDefault()?.Status ?? "Unapproved",
                         CreatedAt = DateTime.Now,
+                        CreatedBy = currentUser,
                         IsActive = true,
                         PaymentFromSubGroupId = entryData.PaymentFromSubGroupId,
                         Unit = entryData.Unit ?? existingUnit, // Preserve Unit
@@ -822,10 +858,11 @@ public class ReceiptEntryService : IReceiptEntryService
         });
     }
 
-    public async Task<(bool success, string message)> ApproveReceiptEntryAsync(int id, string currentUser)
+    public async Task<(bool success, string message)> ApproveReceiptEntryAsync(int id)
     {
         try
         {
+            var currentUser = GetCurrentUsername();
             var entry = await _context.ReceiptEntries.FindAsync(id);
             if (entry == null)
             {
@@ -840,6 +877,8 @@ public class ReceiptEntryService : IReceiptEntryService
             foreach (var relatedEntry in relatedEntries)
             {
                 relatedEntry.Status = "Approved";
+                relatedEntry.UpdatedAt = DateTime.Now;
+                relatedEntry.UpdatedBy = currentUser;
                 _context.Update(relatedEntry);
             }
 
@@ -861,5 +900,6 @@ public class ReceiptEntryService : IReceiptEntryService
             return (false, "Error approving entry: " + ex.Message);
         }
     }
+
 }
 

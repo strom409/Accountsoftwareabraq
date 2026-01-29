@@ -36,6 +36,9 @@ public class ReceiptEntry
     public string Status { get; set; } = "Unapproved"; // Unapproved, Approved
     
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public string? CreatedBy { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    public string? UpdatedBy { get; set; }
     
     public string? Unit { get; set; }
     public bool IsActive { get; set; } = true;

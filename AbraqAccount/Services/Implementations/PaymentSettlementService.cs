@@ -4,6 +4,9 @@ using Microsoft.EntityFrameworkCore;
 using AbraqAccount.Data;
 using AbraqAccount.Models;
 using AbraqAccount.Services.Interfaces;
+using AbraqAccount.Models.Common;
+using AbraqAccount.Extensions;
+using Microsoft.AspNetCore.Http;
 
 namespace AbraqAccount.Services.Implementations;
 
@@ -11,11 +14,28 @@ public class PaymentSettlementService : IPaymentSettlementService
 {
     private readonly AppDbContext _context;
     private readonly ITransactionEntriesService _transactionService;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public PaymentSettlementService(AppDbContext context, ITransactionEntriesService transactionService)
+    public PaymentSettlementService(AppDbContext context, ITransactionEntriesService transactionService, IHttpContextAccessor httpContextAccessor)
     {
         _context = context;
         _transactionService = transactionService;
+        _httpContextAccessor = httpContextAccessor;
+    }
+
+    private string GetCurrentUsername()
+    {
+        try
+        {
+            var session = _httpContextAccessor.HttpContext?.Session;
+            if (session == null) return "Admin";
+            var userSession = session.GetObject<UserSession>(SessionKeys.UserSession);
+            return userSession?.Username ?? "Admin";
+        }
+        catch
+        {
+            return "Admin";
+        }
     }
 
     public async Task<(List<PaymentSettlementGroupViewModel> groups, int totalCount, int totalPages)> GetSettlementsAsync(
@@ -133,10 +153,11 @@ public class PaymentSettlementService : IPaymentSettlementService
         return (groupedViewModels, totalGroups, totalPages);
     }
 
-    public async Task<(bool success, string message)> CreateSettlementAsync(PaymentSettlement paymentSettlement, string currentUser)
+    public async Task<(bool success, string message)> CreateSettlementAsync(PaymentSettlement paymentSettlement)
     {
         try
         {
+            var currentUser = GetCurrentUsername();
             // Generate PA Number (e.g., PA000001)
             var lastSettlement = await _context.PaymentSettlements
                 .OrderByDescending(p => p.Id)
@@ -154,6 +175,7 @@ public class PaymentSettlementService : IPaymentSettlementService
             paymentSettlement.PANumber = $"PA{nextNumber:D6}";
 
             paymentSettlement.CreatedAt = DateTime.Now;
+            paymentSettlement.CreatedBy = currentUser;
             paymentSettlement.ApprovalStatus = paymentSettlement.ApprovalStatus ?? "Unapproved";
             paymentSettlement.PaymentStatus = paymentSettlement.PaymentStatus ?? "Pending";
             paymentSettlement.IsActive = true;
@@ -179,7 +201,7 @@ public class PaymentSettlementService : IPaymentSettlementService
         }
     }
 
-    public async Task<(bool success, string message)> CreateMultipleSettlementsAsync(PaymentSettlementBatchModel model, string currentUser)
+    public async Task<(bool success, string message)> CreateMultipleSettlementsAsync(PaymentSettlementBatchModel model)
     {
         if (model == null || model.Entries == null || model.Entries.Count == 0)
         {
@@ -188,6 +210,7 @@ public class PaymentSettlementService : IPaymentSettlementService
 
         try
         {
+            var currentUser = GetCurrentUsername();
             // Validate that total debit equals total credit
             decimal totalDebit = 0;
             decimal totalCredit = 0;
@@ -275,10 +298,10 @@ public class PaymentSettlementService : IPaymentSettlementService
                     Amount = entryData.Amount,
                     RefNo = entryData.RefNo,
                     Narration = entryData.Narration,
-                    CreatedAt = DateTime.Now,
-                    ApprovalStatus = "Unapproved",
                     PaymentStatus = "Pending",
                     IsActive = true,
+                    CreatedAt = DateTime.Now,
+                    CreatedBy = currentUser,
                     Unit = entryData.Unit,
                     EntryAccountId = entryData.EntryAccountId,
                     EntryForId = entryData.EntryForId,
@@ -308,7 +331,7 @@ public class PaymentSettlementService : IPaymentSettlementService
         }
     }
 
-    public async Task<(bool success, string message)> DeleteSettlementAsync(int id, string currentUser)
+    public async Task<(bool success, string message)> DeleteSettlementAsync(int id)
     {
         var entry = await _context.PaymentSettlements.FindAsync(id);
         if (entry == null)
@@ -318,6 +341,7 @@ public class PaymentSettlementService : IPaymentSettlementService
 
         try
         {
+            var currentUser = GetCurrentUsername();
             // Delete all entries with same PANumber
             var relatedEntries = await _context.PaymentSettlements
                 .Where(p => p.PANumber == entry.PANumber)
@@ -326,6 +350,8 @@ public class PaymentSettlementService : IPaymentSettlementService
             foreach (var rel in relatedEntries)
             {
                 rel.IsActive = false;
+                rel.UpdatedAt = DateTime.Now;
+                rel.UpdatedBy = currentUser;
                 _context.Update(rel);
             }
 
@@ -348,7 +374,7 @@ public class PaymentSettlementService : IPaymentSettlementService
         }
     }
 
-    public async Task<(bool success, string message)> ApproveSettlementAsync(int id, string currentUser)
+    public async Task<(bool success, string message)> ApproveSettlementAsync(int id)
     {
         var entry = await _context.PaymentSettlements.FindAsync(id);
         if (entry == null)
@@ -358,6 +384,7 @@ public class PaymentSettlementService : IPaymentSettlementService
 
         try
         {
+            var currentUser = GetCurrentUsername();
             // Approve all entries with same PANumber
             var relatedEntries = await _context.PaymentSettlements
                 .Where(p => p.PANumber == entry.PANumber && p.IsActive)
@@ -366,6 +393,8 @@ public class PaymentSettlementService : IPaymentSettlementService
             foreach (var rel in relatedEntries)
             {
                 rel.ApprovalStatus = "Approved";
+                rel.UpdatedAt = DateTime.Now;
+                rel.UpdatedBy = currentUser;
                 _context.Update(rel);
             }
 
@@ -388,7 +417,7 @@ public class PaymentSettlementService : IPaymentSettlementService
         }
     }
 
-    public async Task<(bool success, string message)> UnapproveSettlementAsync(int id, string currentUser)
+    public async Task<(bool success, string message)> UnapproveSettlementAsync(int id)
     {
         var entry = await _context.PaymentSettlements.FindAsync(id);
         if (entry == null)
@@ -398,6 +427,7 @@ public class PaymentSettlementService : IPaymentSettlementService
 
         try
         {
+            var currentUser = GetCurrentUsername();
             // Unapprove all entries with same PANumber
             var relatedEntries = await _context.PaymentSettlements
                 .Where(p => p.PANumber == entry.PANumber && p.IsActive)
@@ -406,6 +436,8 @@ public class PaymentSettlementService : IPaymentSettlementService
             foreach (var rel in relatedEntries)
             {
                 rel.ApprovalStatus = "Unapproved";
+                rel.UpdatedAt = DateTime.Now;
+                rel.UpdatedBy = currentUser;
                 _context.Update(rel);
             }
 
@@ -594,7 +626,7 @@ public class PaymentSettlementService : IPaymentSettlementService
             .ToListAsync();
     }
 
-    public async Task<(bool success, string message)> UpdateSettlementAsync(PaymentSettlementBatchModel model, string paNumber, string currentUser)
+    public async Task<(bool success, string message)> UpdateSettlementAsync(PaymentSettlementBatchModel model, string paNumber)
     {
         var strategy = _context.Database.CreateExecutionStrategy();
         
@@ -603,6 +635,7 @@ public class PaymentSettlementService : IPaymentSettlementService
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
+                var currentUser = GetCurrentUsername();
                 // Find existing entries for this PANumber
                 var existingEntries = await _context.PaymentSettlements
                     .Where(p => p.PANumber == paNumber)
@@ -680,6 +713,7 @@ public class PaymentSettlementService : IPaymentSettlementService
                         ApprovalStatus = "Unapproved",
                         PaymentStatus = "Pending",
                         IsActive = true,
+                        CreatedBy = currentUser,
                         Unit = entryData.Unit,
                         EntryForId = entryData.EntryForId,
                         EntryForName = entryData.EntryForName,

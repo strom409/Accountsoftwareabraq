@@ -269,11 +269,11 @@
 
         if (!string.IsNullOrEmpty(VoucherNo))
         {
-             result = await GeneralEntryService.UpdateGrowerBookEntryAsync(item, "admin");
+             result = await GeneralEntryService.UpdateGrowerBookEntryAsync(item);
         }
         else
         {
-             result = await GeneralEntryService.CreateGrowerBookEntryAsync(item, "admin");
+             result = await GeneralEntryService.CreateGrowerBookEntryAsync(item);
         }
         
         isSubmitting = false;

@@ -437,11 +437,9 @@
             Unit = e.Unit
         }).ToList();
 
-        var currentUser = "Admin";
-
         var result = IsEdit 
-            ? await ReceiptService.UpdateReceiptVoucherAsync(VoucherNo!, model, currentUser)
-            : await ReceiptService.CreateMultipleReceiptsAsync(model, currentUser);
+            ? await ReceiptService.UpdateReceiptVoucherAsync(VoucherNo!, model)
+            : await ReceiptService.CreateMultipleReceiptsAsync(model);
 
         if (result.success)
         {

@@ -1,6 +1,8 @@
-using AbraqAccount.Models;
-using AbraqAccount.Services.Interfaces;
+using AbraqAccount.Models.Common;
+using AbraqAccount.Extensions;
 using Microsoft.AspNetCore.Mvc;
+using AbraqAccount.Services.Interfaces;
+using System.Text.Json;
 
 namespace AbraqAccount.Controllers;
 
@@ -25,8 +27,13 @@ public class LoginController : Controller
             return Redirect("/login?error=Invalid credentials");
         }
 
-        HttpContext.Session.SetString("UserId", user.Id.ToString());
-        HttpContext.Session.SetString("Username", user.Username);
+        var sessionData = new UserSession 
+        { 
+            UserId = user.Id, 
+            Username = user.Username 
+        };
+        
+        HttpContext.Session.SetObject(SessionKeys.UserSession, sessionData);
 
         return Redirect("/dashboard");
     }

@@ -1,5 +1,7 @@
 @inherits LayoutComponentBase
 @using Microsoft.AspNetCore.Http
+@using AbraqAccount.Models.Common
+@using AbraqAccount.Extensions
 @inject IHttpContextAccessor HttpContextAccessor
 @inject NavigationManager NavigationManager
 
@@ -75,22 +77,19 @@
             var context = HttpContextAccessor.HttpContext;
             if (context != null && context.Session != null)
             {
-                username = context.Session.GetString("Username") ?? "Unknown";
-                if (string.IsNullOrEmpty(context.Session.GetString("UserId")))
+                var userSession = context.Session.GetObject<UserSession>(SessionKeys.UserSession);
+                if (userSession != null)
                 {
-                    // Only redirect during static render or if we are certain
+                    username = userSession.Username ?? "Unknown";
+                }
+                else
+                {
                     NavigationManager.NavigateTo("login");
                 }
             }
         }
         catch (InvalidOperationException)
         {
-            // Session is often not available during interactive circuit establishment
-            // We should rely on the initial static render's values or state preservation
-        }
-        catch (Exception)
-        {
-            // Silently ignore or handle other exceptions to prevent circuit crash
         }
     }
 

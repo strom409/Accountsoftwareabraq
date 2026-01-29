@@ -1,7 +1,8 @@
 @page "/master/bank-master"
 @using AbraqAccount.Models
+@using AbraqAccount.Models.Common
+@using AbraqAccount.Extensions
 @using AbraqAccount.Services.Interfaces
-@using Microsoft.AspNetCore.Http
 @using Microsoft.AspNetCore.Mvc.Rendering
 @inject IBankMasterService BankMasterService
 @inject IHttpContextAccessor HttpContextAccessor
@@ -284,11 +285,17 @@
         showFormModal = false;
     }
 
+    private string GetCurrentUsername()
+    {
+        var userSession = HttpContextAccessor.HttpContext?.Session.GetObject<UserSession>(SessionKeys.UserSession);
+        return userSession?.Username ?? "Unknown";
+    }
+
     private async Task SaveBank()
     {
         if (editingBank.GroupId == 0) return;
 
-        var username = HttpContextAccessor.HttpContext?.Session.GetString("Username") ?? "Unknown";
+        var username = GetCurrentUsername();
         
         if (editingBank.Id == 0)
         {

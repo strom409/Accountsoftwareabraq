@@ -3,16 +3,36 @@ using Microsoft.EntityFrameworkCore;
 using AbraqAccount.Data;
 using AbraqAccount.Models;
 using AbraqAccount.Services.Interfaces;
+using AbraqAccount.Models.Common;
+using AbraqAccount.Extensions;
+using Microsoft.AspNetCore.Http;
 
 namespace AbraqAccount.Services.Implementations;
 
 public class ExpensesIncurredService : IExpensesIncurredService
 {
     private readonly AppDbContext _context;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public ExpensesIncurredService(AppDbContext context)
+    public ExpensesIncurredService(AppDbContext context, IHttpContextAccessor httpContextAccessor)
     {
         _context = context;
+        _httpContextAccessor = httpContextAccessor;
+    }
+
+    private string GetCurrentUsername()
+    {
+        try
+        {
+            var session = _httpContextAccessor.HttpContext?.Session;
+            if (session == null) return "Admin";
+            var userSession = session.GetObject<UserSession>(SessionKeys.UserSession);
+            return userSession?.Username ?? "Admin";
+        }
+        catch
+        {
+            return "Admin";
+        }
     }
 
     public async Task<(IEnumerable<ExpensesIncurred> expenses, int totalCount, int totalPages)> GetExpensesAsync(
@@ -166,6 +186,7 @@ public class ExpensesIncurredService : IExpensesIncurredService
 
         expensesIncurred.VoucherNo = $"EXP{nextNumber:D6}";
         expensesIncurred.CreatedAt = DateTime.Now;
+        expensesIncurred.CreatedBy = GetCurrentUsername();
         expensesIncurred.Status = expensesIncurred.Status ?? "Unapproved";
         expensesIncurred.IsActive = true;
 
@@ -223,6 +244,8 @@ public class ExpensesIncurredService : IExpensesIncurredService
         }
 
         existingExpense.DebitAccountId = expensesIncurred.DebitAccountId;
+        existingExpense.UpdatedAt = DateTime.Now;
+        existingExpense.UpdatedBy = GetCurrentUsername();
 
         // Populate DebitAccountName from Ledger
         if (expensesIncurred.DebitAccountId.HasValue)
@@ -316,7 +339,11 @@ public class ExpensesIncurredService : IExpensesIncurredService
             return false;
         }
 
-        _context.ExpensesIncurreds.Remove(expense);
+        var currentUser = GetCurrentUsername();
+        expense.IsActive = false;
+        expense.UpdatedAt = DateTime.Now;
+        expense.UpdatedBy = currentUser;
+        _context.Update(expense); // Use Update instead of Remove for soft delete
         await _context.SaveChangesAsync();
         return true;
     }
@@ -329,7 +356,10 @@ public class ExpensesIncurredService : IExpensesIncurredService
             return false;
         }
 
+        var currentUser = GetCurrentUsername();
         expense.Status = "Approved";
+        expense.UpdatedAt = DateTime.Now;
+        expense.UpdatedBy = currentUser;
         await _context.SaveChangesAsync();
         return true;
     }

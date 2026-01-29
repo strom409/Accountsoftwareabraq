@@ -2,7 +2,11 @@ using Microsoft.EntityFrameworkCore;
 using AbraqAccount.Data;
 using AbraqAccount.Models;
 using AbraqAccount.Services.Interfaces;
+using AbraqAccount.Models.Common;
+using AbraqAccount.Extensions;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using System.Text.Json;
 
 namespace AbraqAccount.Services.Implementations;
 
@@ -10,11 +14,28 @@ public class CreditNoteService : ICreditNoteService
 {
     private readonly AppDbContext _context; // Keep existing for non-async-heavy standard ops
     private readonly IDbContextFactory<AppDbContext> _contextFactory; // For isolated lookups
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public CreditNoteService(AppDbContext context, IDbContextFactory<AppDbContext> contextFactory)
+    public CreditNoteService(AppDbContext context, IDbContextFactory<AppDbContext> contextFactory, IHttpContextAccessor httpContextAccessor)
     {
         _context = context;
         _contextFactory = contextFactory;
+        _httpContextAccessor = httpContextAccessor;
+    }
+
+    private string GetCurrentUsername()
+    {
+        try
+        {
+            var session = _httpContextAccessor.HttpContext?.Session;
+            if (session == null) return "Admin";
+            var userSession = session.GetObject<UserSession>(SessionKeys.UserSession);
+            return userSession?.Username ?? "Admin";
+        }
+        catch
+        {
+            return "Admin";
+        }
     }
 
     public async Task<(List<CreditNote> notes, int totalCount, int totalPages)> GetCreditNotesAsync(
@@ -57,6 +78,7 @@ public class CreditNoteService : ICreditNoteService
     {
         model.CreditNoteNo = await GenerateCreditNoteNoAsync();
         model.CreatedAt = DateTime.Now;
+        model.CreatedBy = GetCurrentUsername();
         model.IsActive = true;
         model.Id = 0; // Ensure EF treats this as new
         if (string.IsNullOrEmpty(model.Status)) model.Status = "UnApproved";
@@ -128,6 +150,8 @@ public class CreditNoteService : ICreditNoteService
             if (existing == null) return (false, "Not found");
 
             _context.Entry(existing).CurrentValues.SetValues(model);
+            existing.UpdatedAt = DateTime.Now;
+            existing.UpdatedBy = GetCurrentUsername();
             await _context.SaveChangesAsync();
             return (true, "Updated successfully");
         }
@@ -142,7 +166,10 @@ public class CreditNoteService : ICreditNoteService
         var note = await _context.CreditNotes.FindAsync(id);
         if (note != null)
         {
+            var currentUser = GetCurrentUsername();
             note.IsActive = false;
+            note.UpdatedAt = DateTime.Now;
+            note.UpdatedBy = currentUser;
             _context.Update(note);
             await _context.SaveChangesAsync();
             return (true, "Deleted successfully");
@@ -157,7 +184,10 @@ public class CreditNoteService : ICreditNoteService
 
         if (note.Status == "Approved") return (false, "Already approved");
 
+        var currentUser = GetCurrentUsername();
         note.Status = "Approved";
+        note.UpdatedAt = DateTime.Now;
+        note.UpdatedBy = currentUser;
         _context.Update(note);
         await _context.SaveChangesAsync();
         return (true, "Approved successfully");
@@ -170,7 +200,10 @@ public class CreditNoteService : ICreditNoteService
 
         if (note.Status != "Approved") return (false, "Note is not approved");
 
+        var currentUser = GetCurrentUsername();
         note.Status = "UnApproved";
+        note.UpdatedAt = DateTime.Now;
+        note.UpdatedBy = currentUser;
         _context.Update(note);
         await _context.SaveChangesAsync();
         return (true, "Unapproved successfully");

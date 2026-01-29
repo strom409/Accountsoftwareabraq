@@ -425,11 +425,9 @@
             Unit = e.Unit
         }).ToList();
 
-        var currentUser = "Admin";
-
         var result = IsEdit 
-            ? await SettlementService.UpdateSettlementAsync(model, PANumber!, currentUser)
-            : await SettlementService.CreateMultipleSettlementsAsync(model, currentUser);
+            ? await SettlementService.UpdateSettlementAsync(model, PANumber!)
+            : await SettlementService.CreateMultipleSettlementsAsync(model);
 
         if (result.success)
         {

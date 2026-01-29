@@ -26,11 +26,11 @@ public interface IGeneralEntryService
         int page,
         int pageSize);
 
-    Task<(bool success, string message)> CreateGeneralEntryAsync(GeneralEntry generalEntry, IFormFile? imageFile, string currentUser);
-    Task<(bool success, string message)> CreateMultipleEntriesAsync(GeneralEntryBatchModel model, string currentUser);
-    Task<(bool success, string message)> ApproveEntryAsync(int id, string currentUser);
-    Task<(bool success, string message)> UnapproveEntryAsync(int id, string currentUser);
-    Task<(bool success, string message)> DeleteEntryAsync(int id, string currentUser);
+    Task<(bool success, string message)> CreateGeneralEntryAsync(GeneralEntry generalEntry, IFormFile? imageFile);
+    Task<(bool success, string message)> CreateMultipleEntriesAsync(GeneralEntryBatchModel model);
+    Task<(bool success, string message)> ApproveEntryAsync(int id);
+    Task<(bool success, string message)> UnapproveEntryAsync(int id);
+    Task<(bool success, string message)> DeleteEntryAsync(int id);
     Task<IEnumerable<object>> GetSubGroupLedgersAsync();
     Task<GeneralEntry?> GetEntryByIdAsync(int id);
     Task<List<GeneralEntry>> GetVoucherEntriesAsync(string voucherNo);
@@ -40,7 +40,7 @@ public interface IGeneralEntryService
     Task<IEnumerable<object>> GetVendorGroupsAsync(string? searchTerm);
     Task<List<string>> GetUniqueTypesAsync();
     
-    Task<(bool success, string message)> UpdateVoucherAsync(string voucherNo, GeneralEntryBatchModel model, string currentUser);
+    Task<(bool success, string message)> UpdateVoucherAsync(string voucherNo, GeneralEntryBatchModel model);
     Task<IEnumerable<LookupItem>> GetEntryProfilesAsync(string transactionType);
 
     // Admin/Utility
@@ -49,10 +49,10 @@ public interface IGeneralEntryService
     // Ledger Report
     Task<IEnumerable<object>> GetSubGroupLedgersAsync(int? masterSubGroupId, string? searchTerm);
     Task<IEnumerable<object>> GetAccountsByGroupIdAsync(int groupId);
-    Task<List<GeneralEntry>> GetLedgerReportAsync(int accountId, string accountType, DateTime fromDate, DateTime toDate);
+    Task<LedgerReportResult> GetLedgerReportAsync(int accountId, string accountType, DateTime fromDate, DateTime toDate);
 
-    Task<(bool success, string message)> CreateGrowerBookEntryAsync(GeneralEntry entry, string currentUser);
-    Task<(bool success, string message)> UpdateGrowerBookEntryAsync(GeneralEntry entry, string currentUser);
+    Task<(bool success, string message)> CreateGrowerBookEntryAsync(GeneralEntry entry);
+    Task<(bool success, string message)> UpdateGrowerBookEntryAsync(GeneralEntry entry);
     Task<(List<GeneralEntry> entries, int totalCount, int totalPages)> GetGrowerBookEntriesAsync(DateTime? fromDate, DateTime? toDate, string? bookNo, string? fromGrower, string? toGrower, string? status, int page, int pageSize);
 
     Task<string> GetMediatorAccountNameAsync();

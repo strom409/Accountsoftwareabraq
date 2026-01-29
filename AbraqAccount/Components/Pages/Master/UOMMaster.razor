@@ -1,5 +1,7 @@
 @page "/master/uom"
 @using AbraqAccount.Models
+@using AbraqAccount.Models.Common
+@using AbraqAccount.Extensions
 @using AbraqAccount.Services.Interfaces
 @using Microsoft.AspNetCore.Http
 @inject IUOMService UOMService
@@ -392,7 +394,8 @@
 
     private async Task SaveUOM()
     {
-        var username = HttpContextAccessor.HttpContext?.Session.GetString("Username") ?? "Unknown";
+        var userSession = HttpContextAccessor.HttpContext?.Session.GetObject<UserSession>(SessionKeys.UserSession);
+        var username = userSession?.Username ?? "Unknown";
         bool result;
         if (editingUom.Id == 0)
         {
@@ -428,7 +431,8 @@
 
     private async Task ApproveUOM(int id)
     {
-        var username = HttpContextAccessor.HttpContext?.Session.GetString("Username") ?? "Unknown";
+        var userSession = HttpContextAccessor.HttpContext?.Session.GetObject<UserSession>(SessionKeys.UserSession);
+        var username = userSession?.Username ?? "Unknown";
         var result = await UOMService.ApproveUOMAsync(id, username);
         if (result)
         {

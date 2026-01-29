@@ -1,5 +1,7 @@
 ﻿@using AbraqAccount.Services.Interfaces
 @using Microsoft.AspNetCore.Http
+@using AbraqAccount.Models.Common
+@using AbraqAccount.Extensions
 @inject IUserPermissionService PermissionService
 @inject IHttpContextAccessor HttpContextAccessor
 @inject NavigationManager NavigationManager
@@ -132,8 +134,6 @@
         <ul class="submenu">
             <li><NavLink class="nav-link" href="settings/entry-for">Profiles (Entry For)</NavLink></li>
             <li><NavLink class="nav-link" href="settings/transaction-rules">Transaction Rules</NavLink></li>
-            <li><NavLink class="nav-link" href="settings/permissions">User Permissions</NavLink></li>
-            <li><NavLink class="nav-link" href="settings/profile">User Profile</NavLink></li>
         </ul>
     </li>
 </ul>
@@ -150,10 +150,10 @@
             var session = HttpContextAccessor.HttpContext?.Session;
             if (session != null)
             {
-                var userIdStr = session.GetString("UserId");
-                if (int.TryParse(userIdStr, out int id))
+                var userSession = session.GetObject<UserSession>(SessionKeys.UserSession);
+                if (userSession != null)
                 {
-                    userId = id;
+                    userId = userSession.UserId;
                 }
             }
         }

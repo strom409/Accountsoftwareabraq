@@ -5,6 +5,8 @@ using AbraqAccount.Services.Interfaces;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using System.Text.Json;
+using AbraqAccount.Models.Common;
+using AbraqAccount.Extensions;
 
 namespace AbraqAccount.Services.Implementations;
 
@@ -12,11 +14,28 @@ public class DebitNoteService : IDebitNoteService
 {
     private readonly AppDbContext _context;
     private readonly IDbContextFactory<AppDbContext> _contextFactory;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public DebitNoteService(AppDbContext context, IDbContextFactory<AppDbContext> contextFactory)
+    public DebitNoteService(AppDbContext context, IDbContextFactory<AppDbContext> contextFactory, IHttpContextAccessor httpContextAccessor)
     {
         _context = context;
         _contextFactory = contextFactory;
+        _httpContextAccessor = httpContextAccessor;
+    }
+
+    private string GetCurrentUsername()
+    {
+        try
+        {
+            var session = _httpContextAccessor.HttpContext?.Session;
+            if (session == null) return "Admin";
+            var userSession = session.GetObject<UserSession>(SessionKeys.UserSession);
+            return userSession?.Username ?? "Admin";
+        }
+        catch
+        {
+            return "Admin";
+        }
     }
 
     public async Task<(List<DebitNote> notes, int totalCount, int totalPages)> GetDebitNotesAsync(
@@ -83,6 +102,7 @@ public class DebitNoteService : IDebitNoteService
             debitNote.DebitNoteNo = $"DN{nextNoteNo:D6}";
             debitNote.Amount = details.Sum(d => d.Amount);
             debitNote.CreatedAt = DateTime.Now;
+            debitNote.CreatedBy = GetCurrentUsername();
             debitNote.Status = debitNote.Status ?? "UnApproved";
             debitNote.IsActive = true;
 
@@ -114,7 +134,10 @@ public class DebitNoteService : IDebitNoteService
          var note = await _context.DebitNotes.FindAsync(id);
          if (note == null) return (false, "Not found");
          
+         var currentUser = GetCurrentUsername();
          note.IsActive = false;
+         note.UpdatedAt = DateTime.Now;
+         note.UpdatedBy = currentUser;
          _context.Update(note);
          await _context.SaveChangesAsync();
          return (true, "Deleted successfully");
@@ -201,6 +224,9 @@ public class DebitNoteService : IDebitNoteService
              });
         }
 
+        note.UpdatedAt = DateTime.Now;
+        note.UpdatedBy = GetCurrentUsername();
+
         await _context.SaveChangesAsync();
         return (true, "Updated successfully");
     }
@@ -210,7 +236,10 @@ public class DebitNoteService : IDebitNoteService
         var note = await _context.DebitNotes.FindAsync(id);
         if (note == null) return (false, "Not found");
         
+        var currentUser = GetCurrentUsername();
         note.Status = "Approved";
+        note.UpdatedAt = DateTime.Now;
+        note.UpdatedBy = currentUser;
         await _context.SaveChangesAsync();
         return (true, "Approved successfully");
     }
@@ -222,7 +251,10 @@ public class DebitNoteService : IDebitNoteService
         
         if (note.Status != "Approved") return (false, "Note is not approved");
 
+        var currentUser = GetCurrentUsername();
         note.Status = "UnApproved";
+        note.UpdatedAt = DateTime.Now;
+        note.UpdatedBy = currentUser;
         await _context.SaveChangesAsync();
         return (true, "Unapproved successfully");
     }

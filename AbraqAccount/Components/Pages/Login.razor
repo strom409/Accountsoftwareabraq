@@ -1,6 +1,7 @@
 @page "/login"
 @using AbraqAccount.Components.Layout
-@using AbraqAccount.Models
+@using AbraqAccount.Models.Common
+@using AbraqAccount.Extensions
 @using AbraqAccount.Services.Interfaces
 @using Microsoft.AspNetCore.Http
 @inject IAccountService AccountService
@@ -252,10 +253,10 @@
     {
         // Check if already logged in (SSR check)
         var context = HttpContextAccessor.HttpContext;
-        if (context != null)
+        if (context != null && context.Session != null)
         {
-            var userId = context.Session.GetString("UserId");
-            if (!string.IsNullOrEmpty(userId))
+            var userSession = context.Session.GetObject<UserSession>(SessionKeys.UserSession);
+            if (userSession != null)
             {
                 NavigationManager.NavigateTo("dashboard");
             }

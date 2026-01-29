@@ -38,6 +38,9 @@ public class PaymentSettlement
     public string PaymentStatus { get; set; } = "Pending";
     
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public string? CreatedBy { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    public string? UpdatedBy { get; set; }
     
     public string? Unit { get; set; }
     

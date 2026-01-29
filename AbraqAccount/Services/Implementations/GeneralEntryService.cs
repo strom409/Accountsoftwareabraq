@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting; // For IWebHostEnvironment
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using AbraqAccount.Data;
 using AbraqAccount.Models;
 using AbraqAccount.Services.Interfaces;
-using System.Text.Json;
+using AbraqAccount.Models.Common;
+using AbraqAccount.Extensions;
 
 namespace AbraqAccount.Services.Implementations;
 
@@ -13,12 +15,29 @@ public class GeneralEntryService : IGeneralEntryService
     private readonly AppDbContext _context;
     private readonly IWebHostEnvironment _webHostEnvironment;
     private readonly ITransactionEntriesService _transactionService;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public GeneralEntryService(AppDbContext context, IWebHostEnvironment webHostEnvironment, ITransactionEntriesService transactionService)
+    public GeneralEntryService(AppDbContext context, IWebHostEnvironment webHostEnvironment, ITransactionEntriesService transactionService, IHttpContextAccessor httpContextAccessor)
     {
         _context = context;
         _webHostEnvironment = webHostEnvironment;
         _transactionService = transactionService;
+        _httpContextAccessor = httpContextAccessor;
+    }
+
+    private string GetCurrentUsername()
+    {
+        try
+        {
+            var session = _httpContextAccessor.HttpContext?.Session;
+            if (session == null) return "Admin";
+            var userSession = session.GetObject<UserSession>(SessionKeys.UserSession);
+            return userSession?.Username ?? "Admin";
+        }
+        catch
+        {
+            return "Admin";
+        }
     }
 
     public async Task<(List<GeneralEntry> entries, int totalCount, int totalPages)> GetGeneralEntriesAsync(
@@ -149,32 +168,38 @@ public class GeneralEntryService : IGeneralEntryService
         string type = isCredit ? entry.CreditAccountType : entry.DebitAccountType;
         int id = isCredit ? entry.CreditAccountId : entry.DebitAccountId;
 
-        if (type == "MasterGroup")
+        if (type == AccountTypes.MasterGroup)
         {
             var mg = await _context.MasterGroups.FindAsync(id);
             if(isCredit) entry.CreditMasterGroup = mg; else entry.DebitMasterGroup = mg;
         }
-        else if (type == "MasterSubGroup")
+        else if (type == AccountTypes.MasterSubGroup)
         {
             var msg = await _context.MasterSubGroups.Include(m => m.MasterGroup).FirstOrDefaultAsync(m => m.Id == id);
             if(isCredit) entry.CreditMasterSubGroup = msg; else entry.DebitMasterSubGroup = msg;
         }
-        else if (type == "SubGroupLedger")
-    {
-        var sgl = await _context.SubGroupLedgers.Include(s => s.MasterGroup).Include(s => s.MasterSubGroup).FirstOrDefaultAsync(s => s.Id == id);
-         if(isCredit) entry.CreditSubGroupLedger = sgl; else entry.DebitSubGroupLedger = sgl;
-    }
-    else if (type == "BankMaster")
-    {
-        var bm = await _context.BankMasters.FindAsync(id);
-        if (isCredit) entry.CreditBankMasterInfo = bm; else entry.DebitBankMasterInfo = bm;
-    }
+        else if (type == AccountTypes.SubGroupLedger)
+        {
+            var sgl = await _context.SubGroupLedgers.Include(s => s.MasterGroup).Include(s => s.MasterSubGroup).FirstOrDefaultAsync(s => s.Id == id);
+             if(isCredit) entry.CreditSubGroupLedger = sgl; else entry.DebitSubGroupLedger = sgl;
+        }
+        else if (type == AccountTypes.BankMaster)
+        {
+            var bm = await _context.BankMasters.FindAsync(id);
+            if (isCredit) entry.CreditBankMasterInfo = bm; else entry.DebitBankMasterInfo = bm;
+        }
+        else if (type == AccountTypes.Farmer)
+        {
+            var farmer = await _context.Farmers.FindAsync(id);
+            if (isCredit) entry.CreditFarmer = farmer; else entry.DebitFarmer = farmer;
+        }
     }
 
-    public async Task<(bool success, string message)> CreateGeneralEntryAsync(GeneralEntry generalEntry, IFormFile? imageFile, string currentUser)
+    public async Task<(bool success, string message)> CreateGeneralEntryAsync(GeneralEntry generalEntry, IFormFile? imageFile)
     {
         try
         {
+            var currentUser = GetCurrentUsername();
             // Handle image upload
             string? imagePath = null;
             if (imageFile != null && imageFile.Length > 0)
@@ -240,6 +265,7 @@ public class GeneralEntryService : IGeneralEntryService
             generalEntry.VoucherNo = $"JBK/A/{yearShort}-{nextYear}/{nextNumber:D5}";
 
             generalEntry.CreatedAt = DateTime.Now;
+            generalEntry.CreatedBy = GetCurrentUsername();
             generalEntry.Status = generalEntry.Status ?? "Unapproved";
             generalEntry.IsActive = true;
 
@@ -280,8 +306,10 @@ public class GeneralEntryService : IGeneralEntryService
         }
     }
 
-    public async Task<(bool success, string message)> CreateMultipleEntriesAsync(GeneralEntryBatchModel model, string currentUser)
+    public async Task<(bool success, string message)> CreateMultipleEntriesAsync(GeneralEntryBatchModel model)
     {
+        var currentUser = GetCurrentUsername();
+
         if (model == null || model.Entries == null || model.Entries.Count == 0)
         {
             return (false, "No entries to save.");
@@ -330,7 +358,7 @@ public class GeneralEntryService : IGeneralEntryService
                 .FirstOrDefaultAsync();
             
             int mediatorAccountId = mediatorAccount?.Id ?? 1;
-            string mediatorAccountType = "MasterGroup";
+            string mediatorAccountType = AccountTypes.MasterGroup;
             
             // Detection: Is this a 1-to-1 transaction?
             bool isSimpleTransaction = model.Entries.Count == 2 && 
@@ -388,6 +416,7 @@ public class GeneralEntryService : IGeneralEntryService
                     Narration = (!string.IsNullOrEmpty(debitData.RefNoChequeUTR) ? $"Ref: {debitData.RefNoChequeUTR}. " : "") + (debitData.Narration ?? ""),
                     ReferenceNo = debitData.RefNoChequeUTR,
                     CreatedAt = DateTime.Now,
+                    CreatedBy = currentUser,
                     Status = "Unapproved",
                     IsActive = true,
                     Unit = debitData.Unit,
@@ -438,6 +467,7 @@ public class GeneralEntryService : IGeneralEntryService
                         Narration = (!string.IsNullOrEmpty(entryData.RefNoChequeUTR) ? $"Ref: {entryData.RefNoChequeUTR}. " : "") + (entryData.Narration ?? ""),
                         ReferenceNo = entryData.RefNoChequeUTR,
                         CreatedAt = DateTime.Now,
+                        CreatedBy = currentUser,
                         Status = "Unapproved",
                         IsActive = true,
                         Unit = entryData.Unit,
@@ -472,10 +502,11 @@ public class GeneralEntryService : IGeneralEntryService
         }
     }
 
-    public async Task<(bool success, string message)> ApproveEntryAsync(int id, string currentUser)
+    public async Task<(bool success, string message)> ApproveEntryAsync(int id)
     {
         try
         {
+            var currentUser = GetCurrentUsername();
             var entry = await _context.GeneralEntries.FindAsync(id);
             if (entry != null)
             {
@@ -487,6 +518,8 @@ public class GeneralEntryService : IGeneralEntryService
                 foreach (var rel in relatedEntries)
                 {
                     rel.Status = "Approved";
+                    rel.UpdatedAt = DateTime.Now;
+                    rel.UpdatedBy = currentUser;
                 }
 
                 await _context.SaveChangesAsync();
@@ -510,10 +543,11 @@ public class GeneralEntryService : IGeneralEntryService
         }
     }
 
-    public async Task<(bool success, string message)> UnapproveEntryAsync(int id, string currentUser)
+    public async Task<(bool success, string message)> UnapproveEntryAsync(int id)
     {
         try
         {
+            var currentUser = GetCurrentUsername();
             var entry = await _context.GeneralEntries.FindAsync(id);
             if (entry != null)
             {
@@ -525,6 +559,8 @@ public class GeneralEntryService : IGeneralEntryService
                 foreach (var rel in relatedEntries)
                 {
                     rel.Status = "Unapproved";
+                    rel.UpdatedAt = DateTime.Now;
+                    rel.UpdatedBy = currentUser;
                 }
 
                 await _context.SaveChangesAsync();
@@ -548,8 +584,9 @@ public class GeneralEntryService : IGeneralEntryService
         }
     }
 
-    public async Task<(bool success, string message)> DeleteEntryAsync(int id, string currentUser)
+    public async Task<(bool success, string message)> DeleteEntryAsync(int id)
     {
+        var currentUser = GetCurrentUsername();
         var entry = await _context.GeneralEntries.FindAsync(id);
         if (entry == null)
         {
@@ -566,6 +603,8 @@ public class GeneralEntryService : IGeneralEntryService
             foreach (var rel in relatedEntries)
             {
                 rel.IsActive = false;
+                rel.UpdatedAt = DateTime.Now;
+                rel.UpdatedBy = currentUser;
                 _context.Update(rel);
             }
 
@@ -720,14 +759,14 @@ public class GeneralEntryService : IGeneralEntryService
 
         var globalAccounts = new List<LookupItem>();
         globalAccounts.AddRange(globalBankMasters
-            .Where(bm => IsAllowed("BankMaster", bm.Id, "SubGroupLedger", bm.GroupId))
-            .Select(bm => new LookupItem { Id = bm.Id, Name = bm.AccountName, Type = "BankMaster" }));
+            .Where(bm => IsAllowed(AccountTypes.BankMaster, bm.Id, AccountTypes.SubGroupLedger, bm.GroupId))
+            .Select(bm => new LookupItem { Id = bm.Id, Name = bm.AccountName, Type = AccountTypes.BankMaster }));
         globalAccounts.AddRange(globalSubGroupLedgers
-            .Where(sgl => IsAllowed("SubGroupLedger", sgl.Id))
-            .Select(sgl => new LookupItem { Id = sgl.Id, Name = sgl.Name, Type = "SubGroupLedger" }));
+            .Where(sgl => IsAllowed(AccountTypes.SubGroupLedger, sgl.Id))
+            .Select(sgl => new LookupItem { Id = sgl.Id, Name = sgl.Name, Type = AccountTypes.SubGroupLedger }));
         globalAccounts.AddRange(globalFarmers
-            .Where(f => IsAllowed("Farmer", f.Id, "GrowerGroup", f.GroupId))
-            .Select(f => new LookupItem { Id = f.Id, Name = f.FarmerName, Type = "Farmer" }));
+            .Where(f => IsAllowed(AccountTypes.Farmer, f.Id, AccountTypes.GrowerGroup, f.GroupId))
+            .Select(f => new LookupItem { Id = f.Id, Name = f.FarmerName, Type = AccountTypes.Farmer }));
 
         return globalAccounts.OrderBy(a => a.Name).Take(100).ToList();
     }
@@ -837,12 +876,14 @@ public class GeneralEntryService : IGeneralEntryService
         }
     }
 
-    public async Task<(bool success, string message)> UpdateVoucherAsync(string voucherNo, GeneralEntryBatchModel model, string currentUser)
+    public async Task<(bool success, string message)> UpdateVoucherAsync(string voucherNo, GeneralEntryBatchModel model)
     {
         if (model == null || model.Entries == null || model.Entries.Count == 0)
         {
             return (false, "No entries to save.");
         }
+
+        var currentUser = GetCurrentUsername();
 
         var strategy = _context.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
@@ -904,7 +945,7 @@ public class GeneralEntryService : IGeneralEntryService
                 // Get default account (the mediator)
                 var mediatorAccount = await _context.MasterGroups.OrderBy(mg => mg.Id).FirstOrDefaultAsync();
                 int mediatorAccountId = mediatorAccount?.Id ?? 1;
-                string mediatorAccountType = "MasterGroup";
+                string mediatorAccountType = AccountTypes.MasterGroup;
 
                 // Detection: Is this a 1-to-1 transaction?
                 bool isSimpleTransaction = model.Entries.Count == 2 && 
@@ -936,6 +977,7 @@ public class GeneralEntryService : IGeneralEntryService
                         Narration = (!string.IsNullOrEmpty(debitData.RefNoChequeUTR) ? $"Ref: {debitData.RefNoChequeUTR}. " : "") + (debitData.Narration ?? ""),
                         ReferenceNo = debitData.RefNoChequeUTR,
                         CreatedAt = DateTime.Now,
+                        CreatedBy = currentUser,
                         Status = existingEntries.FirstOrDefault()?.Status ?? "Unapproved",
                         IsActive = true,
                         Unit = debitData.Unit ?? existingUnit, // Preserve unit
@@ -1028,30 +1070,30 @@ public class GeneralEntryService : IGeneralEntryService
     private async Task LoadAccountNamesAsync(GeneralEntry entry)
     {
         // Load Debit Account
-        if (entry.DebitAccountType == "MasterGroup")
+        if (entry.DebitAccountType == AccountTypes.MasterGroup)
         {
             entry.DebitMasterGroup = await _context.MasterGroups.FindAsync(entry.DebitAccountId);
         }
-        else if (entry.DebitAccountType == "MasterSubGroup")
+        else if (entry.DebitAccountType == AccountTypes.MasterSubGroup)
         {
             entry.DebitMasterSubGroup = await _context.MasterSubGroups
                 .Include(msg => msg.MasterGroup)
                 .FirstOrDefaultAsync(msg => msg.Id == entry.DebitAccountId);
         }
-        else if (entry.DebitAccountType == "SubGroupLedger")
+        else if (entry.DebitAccountType == AccountTypes.SubGroupLedger)
         {
             entry.DebitSubGroupLedger = await _context.SubGroupLedgers
                 .Include(sgl => sgl.MasterGroup)
                 .Include(sgl => sgl.MasterSubGroup)
                 .FirstOrDefaultAsync(sgl => sgl.Id == entry.DebitAccountId);
         }
-        else if (entry.DebitAccountType == "BankMaster")
+        else if (entry.DebitAccountType == AccountTypes.BankMaster)
         {
             entry.DebitBankMasterInfo = await _context.BankMasters
                 .Include(b => b.Group)
                 .FirstOrDefaultAsync(b => b.Id == entry.DebitAccountId);
         }
-        else if (entry.DebitAccountType == "Farmer")
+        else if (entry.DebitAccountType == AccountTypes.Farmer)
         {
             entry.DebitFarmer = await _context.Farmers
                 .Include(f => f.GrowerGroup)
@@ -1059,35 +1101,49 @@ public class GeneralEntryService : IGeneralEntryService
         }
 
         // Load Credit Account
-        if (entry.CreditAccountType == "MasterGroup")
+        if (entry.CreditAccountType == AccountTypes.MasterGroup)
         {
             entry.CreditMasterGroup = await _context.MasterGroups.FindAsync(entry.CreditAccountId);
         }
-        else if (entry.CreditAccountType == "MasterSubGroup")
+        else if (entry.CreditAccountType == AccountTypes.MasterSubGroup)
         {
             entry.CreditMasterSubGroup = await _context.MasterSubGroups
                 .Include(msg => msg.MasterGroup)
                 .FirstOrDefaultAsync(msg => msg.Id == entry.CreditAccountId);
         }
-        else if (entry.CreditAccountType == "SubGroupLedger")
+        else if (entry.CreditAccountType == AccountTypes.SubGroupLedger)
         {
             entry.CreditSubGroupLedger = await _context.SubGroupLedgers
                 .Include(sgl => sgl.MasterGroup)
                 .Include(sgl => sgl.MasterSubGroup)
                 .FirstOrDefaultAsync(sgl => sgl.Id == entry.CreditAccountId);
         }
-        else if (entry.CreditAccountType == "BankMaster")
+        else if (entry.CreditAccountType == AccountTypes.BankMaster)
         {
             entry.CreditBankMasterInfo = await _context.BankMasters
                 .Include(b => b.Group)
                 .FirstOrDefaultAsync(b => b.Id == entry.CreditAccountId);
         }
-        else if (entry.CreditAccountType == "Farmer")
+        else if (entry.CreditAccountType == AccountTypes.Farmer)
         {
              entry.CreditFarmer = await _context.Farmers
                 .Include(f => f.GrowerGroup)
                 .FirstOrDefaultAsync(f => f.Id == entry.CreditAccountId);
         }
+
+        // Load EntryForName if missing
+    if (string.IsNullOrEmpty(entry.EntryForName))
+    {
+        int? profileId = entry.EntryForId ?? entry.EntryAccountId;
+        if (profileId.HasValue && profileId > 0)
+        {
+            var profile = await _context.EntryForAccounts.FindAsync(profileId.Value);
+            if (profile != null)
+            {
+                entry.EntryForName = profile.AccountName;
+            }
+        }
+    }
     }
 
 
@@ -1133,15 +1189,20 @@ public class GeneralEntryService : IGeneralEntryService
             .Select(bm => new { 
                 id = bm.Id, 
                 name = bm.AccountName,
-                type = "BankMaster"
+                type = AccountTypes.BankMaster
             })
             .ToListAsync();
             
         return accounts;
     }
 
-    public async Task<List<GeneralEntry>> GetLedgerReportAsync(int accountId, string accountType, DateTime fromDate, DateTime toDate)
+    public async Task<LedgerReportResult> GetLedgerReportAsync(int accountId, string accountType, DateTime fromDate, DateTime toDate)
     {
+        var result = new LedgerReportResult();
+        
+        // 0. Calculate Opening Balance
+        result.OpeningBalance = await CalculateBalanceUntilAsync(accountId, accountType, fromDate);
+        
         var allEntries = new List<GeneralEntry>();
         
         // 1. Fetch GeneralEntries
@@ -1154,8 +1215,8 @@ public class GeneralEntryService : IGeneralEntryService
         {
             // Filter by BankMaster on either debit or credit side
             query = query.Where(g =>
-                (g.DebitAccountId == accountId && g.DebitAccountType == "BankMaster") ||
-                (g.CreditAccountId == accountId && g.CreditAccountType == "BankMaster")
+                (g.DebitAccountId == accountId && g.DebitAccountType == AccountTypes.BankMaster) ||
+                (g.CreditAccountId == accountId && g.CreditAccountType == AccountTypes.BankMaster)
             );
         }
         else
@@ -1175,10 +1236,10 @@ public class GeneralEntryService : IGeneralEntryService
             
             // Each GeneralEntry row is a balanced pair (1 Debit, 1 Credit).
             // We just need to determine which side our account is on and show the other side as Particulars.
-            bool isDebit = (entry.DebitAccountId == accountId && entry.DebitAccountType == accountType);
+            bool isOurDebit = (entry.DebitAccountId == accountId && entry.DebitAccountType == accountType);
             
             // Create a ledger entry representing this row's contribution to the selected account
-            var ledgerEntry = CreateLedgerEntry(entry, entry, entry.Amount, isDebit);
+            var ledgerEntry = CreateLedgerEntry(entry, entry, entry.Amount, isOurDebit);
             allEntries.Add(ledgerEntry);
         }
         
@@ -1220,7 +1281,7 @@ public class GeneralEntryService : IGeneralEntryService
                     // Split logic for 1-to-Many
                     foreach (var opEntry in actualOppositeEntries)
                     {
-                        var pairedAccountName = await GetAccountNameForReceiptEntry(opEntry.AccountId, opEntry.AccountType);
+                        var pairedAccountName = await GetAccountNameAsync(opEntry.AccountId, opEntry.AccountType);
                         var generalEntry = CreateReceiptLedgerEntry(entry, opEntry, opEntry.Amount, pairedAccountName);
                         allEntries.Add(generalEntry);
                     }
@@ -1230,7 +1291,7 @@ public class GeneralEntryService : IGeneralEntryService
                     // No split (1-to-1 or Many-to-1, or Many-to-Many fallback)
                     // We'll show the current entry against the first available opposite account
                     var opEntry = actualOppositeEntries.FirstOrDefault();
-                    var pairedAccountName = opEntry != null ? await GetAccountNameForReceiptEntry(opEntry.AccountId, opEntry.AccountType) : "N/A";
+                    var pairedAccountName = opEntry != null ? await GetAccountNameAsync(opEntry.AccountId, opEntry.AccountType) : "N/A";
                     var generalEntry = CreateReceiptLedgerEntry(entry, opEntry, entry.Amount, pairedAccountName);
                     allEntries.Add(generalEntry);
                 }
@@ -1238,7 +1299,7 @@ public class GeneralEntryService : IGeneralEntryService
         }
 
         // 3. Fetch Debit Notes if filtering by BankMaster (Vendor side)
-        if (accountType == "BankMaster")
+        if (accountType == AccountTypes.BankMaster)
         {
             var debitNotes = await _context.DebitNotes
                 .Where(d =>
@@ -1277,7 +1338,7 @@ public class GeneralEntryService : IGeneralEntryService
                                 Status = note.Status,
                                 CreatedAt = note.CreatedAt,
                                 DebitAccountId = noteBankMasterId,
-                                DebitAccountType = "BankMaster",
+                                DebitAccountType = AccountTypes.BankMaster,
                                 VoucherType = "Debit Note",
                                 Unit = note.Unit
                             };
@@ -1300,7 +1361,7 @@ public class GeneralEntryService : IGeneralEntryService
                             Status = note.Status,
                             CreatedAt = note.CreatedAt,
                             DebitAccountId = noteBankMasterId,
-                            DebitAccountType = "BankMaster",
+                            DebitAccountType = AccountTypes.BankMaster,
                             VoucherType = "Debit Note",
                             CreditBankMasterInfo = new BankMaster { AccountName = "Items" }, // Default fallback name
                             Unit = note.Unit
@@ -1311,7 +1372,7 @@ public class GeneralEntryService : IGeneralEntryService
         }
 
         // 4. Fetch Credit Notes if filtering by Farmer (Grower side)
-        if (accountType == "Farmer")
+        if (accountType == AccountTypes.Farmer)
         {
             var creditNotes = await _context.CreditNotes
                 .Where(c =>
@@ -1343,7 +1404,7 @@ public class GeneralEntryService : IGeneralEntryService
                             Status = note.Status,
                             CreatedAt = note.CreatedAt,
                             CreditAccountId = note.FarmerId ?? 0,
-                            CreditAccountType = "Farmer",
+                            CreditAccountType = AccountTypes.Farmer,
 
                             VoucherType = "Credit Note",
                             Unit = note.Unit,
@@ -1364,7 +1425,7 @@ public class GeneralEntryService : IGeneralEntryService
                         Status = note.Status,
                         CreatedAt = note.CreatedAt,
                         CreditAccountId = note.FarmerId ?? 0,
-                        CreditAccountType = "Farmer",
+                        CreditAccountType = AccountTypes.Farmer,
                         VoucherType = "Credit Note",
                         DebitBankMasterInfo = new BankMaster { AccountName = "Items" }, // Default fallback name
                         Unit = note.Unit
@@ -1372,45 +1433,158 @@ public class GeneralEntryService : IGeneralEntryService
                 }
             }
         }
+
+        // 5. Payment Settlements
+        // Fetch all matching PANumbers first to avoid N+1 queries later if possible, 
+        // but for simplicity and correctness, we'll fetch them in a way that allows finding the opposite side.
+        var matchedSettlements = await _context.PaymentSettlements
+            .Where(s => 
+                s.IsActive && 
+                s.ApprovalStatus == "Approved" &&
+                s.SettlementDate >= fromDate && s.SettlementDate <= toDate &&
+                (
+                    (s.AccountId == accountId && s.AccountType == accountType) ||
+                    (s.EntryForId == accountId && accountType == AccountTypes.SubGroupLedger)
+                )
+            )
+            .ToListAsync();
+
+        var paNumbers = matchedSettlements.Select(s => s.PANumber).Distinct().ToList();
+        var allRelatedSettlements = await _context.PaymentSettlements
+            .Where(s => paNumbers.Contains(s.PANumber) && s.IsActive)
+            .ToListAsync();
+
+        foreach (var s in matchedSettlements)
+        {
+            // Find the opposite side in the same batch
+            var oppositeEntries = allRelatedSettlements
+                .Where(r => r.PANumber == s.PANumber && r.Type != s.Type)
+                .ToList();
+
+            string oppositeName = "N/A";
+            if (oppositeEntries.Any())
+            {
+                // Join names if multiple (though usually it's 1-to-1)
+                oppositeName = string.Join(", ", oppositeEntries.Select(oe => oe.AccountName).Distinct());
+            }
+
+            var ge = new GeneralEntry
+            {
+                Id = s.Id * -5000, 
+                VoucherNo = s.PANumber,
+                EntryDate = s.SettlementDate,
+                Amount = s.Amount,
+                Narration = s.Narration,
+                Status = s.ApprovalStatus,
+                CreatedAt = s.CreatedAt,
+                VoucherType = "Payment Settlement",
+                PaymentType = s.PaymentType,
+                Unit = s.Unit
+            };
+
+            // Setup the side we are viewing
+            bool isDebit = (s.Type == "Debit" || s.Type == "Payment");
+            if (isDebit)
+            {
+                ge.DebitAccountId = s.AccountId;
+                ge.DebitAccountType = s.AccountType;
+                ge.CreditBankMasterInfo = new BankMaster { AccountName = oppositeName };
+            }
+            else
+            {
+                ge.CreditAccountId = s.AccountId;
+                ge.CreditAccountType = s.AccountType;
+                ge.DebitBankMasterInfo = new BankMaster { AccountName = oppositeName };
+            }
+
+            allEntries.Add(ge);
+        }
         
-        // 5. Sort all entries by date
-        allEntries = allEntries
+        // 6. Sort all entries by date
+        result.Entries = allEntries
             .OrderBy(e => e.EntryDate)
             .ThenBy(e => e.Id)
             .ToList();
 
-        return allEntries;
+        // Calculate Closing Balance
+        decimal bal = result.OpeningBalance;
+        foreach (var entry in result.Entries)
+        {
+            bool isOurDebit = (entry.DebitAccountId == accountId && entry.DebitAccountType == accountType);
+            decimal d = isOurDebit ? entry.Amount : 0;
+            decimal c = isOurDebit ? 0 : entry.Amount;
+            bal += (c - d);
+        }
+        result.ClosingBalance = bal;
+
+        return result;
     }
 
-    private async Task<string> GetAccountNameForReceiptEntry(int accountId, string accountType)
+    private async Task<decimal> CalculateBalanceUntilAsync(int accountId, string accountType, DateTime untilDate)
     {
-        if (accountType == "BankMaster")
+        // 1. GeneralEntries (Journal)
+        var geDebit = await _context.GeneralEntries
+            .Where(g => g.DebitAccountId == accountId && g.DebitAccountType == accountType && g.EntryDate < untilDate)
+            .SumAsync(g => (decimal?)g.Amount) ?? 0;
+        var geCredit = await _context.GeneralEntries
+            .Where(g => g.CreditAccountId == accountId && g.CreditAccountType == accountType && g.EntryDate < untilDate)
+            .SumAsync(g => (decimal?)g.Amount) ?? 0;
+
+        // 2. ReceiptEntries
+        var reDebit = await _context.ReceiptEntries
+            .Where(r => r.IsActive && r.Status == "Approved" && r.AccountId == accountId && r.AccountType == accountType && (r.Type == "Debit" || r.Type == "Payment") && r.ReceiptDate < untilDate)
+            .SumAsync(r => (decimal?)r.Amount) ?? 0;
+        var reCredit = await _context.ReceiptEntries
+            .Where(r => r.IsActive && r.Status == "Approved" && r.AccountId == accountId && r.AccountType == accountType && (r.Type == "Credit" || r.Type == "Receipt") && r.ReceiptDate < untilDate)
+            .SumAsync(r => (decimal?)r.Amount) ?? 0;
+
+        // 3. PaymentSettlements
+        var psDebit = await _context.PaymentSettlements
+            .Where(s => s.IsActive && s.ApprovalStatus == "Approved" && s.AccountId == accountId && s.AccountType == accountType && (s.Type == "Debit" || s.Type == "Payment") && s.SettlementDate < untilDate)
+            .SumAsync(s => (decimal?)s.Amount) ?? 0;
+        var psCredit = await _context.PaymentSettlements
+            .Where(s => s.IsActive && s.ApprovalStatus == "Approved" && s.AccountId == accountId && s.AccountType == accountType && (s.Type == "Credit" || s.Type == "Receipt") && s.SettlementDate < untilDate)
+            .SumAsync(s => (decimal?)s.Amount) ?? 0;
+
+        // 4. Debit Notes
+        decimal dnAmount = 0;
+        if (accountType == AccountTypes.BankMaster)
         {
-            var bank = await _context.BankMasters.FindAsync(accountId);
-            return bank?.AccountName ?? "";
+             var mappings = await LoadDebitNoteBankMasterIdMappingsAsync();
+             var debitNotes = await _context.DebitNotes
+                .Where(d => d.IsActive && d.Status == "Approved" && d.DebitNoteDate < untilDate)
+                .ToListAsync();
+             foreach(var note in debitNotes)
+             {
+                 int noteBankMasterId = note.BankMasterId ?? 0;
+                 if (mappings.TryGetValue(note.Id, out int mappedId)) noteBankMasterId = mappedId;
+                 if(noteBankMasterId == accountId) dnAmount += (note.Amount ?? 0);
+             }
         }
-        else if (accountType == "MasterGroup")
+
+        // 5. Credit Notes
+        decimal cnAmount = 0;
+        if (accountType == AccountTypes.Farmer)
         {
-            var group = await _context.MasterGroups.FindAsync(accountId);
-            return group?.Name ?? "";
+             cnAmount = await _context.CreditNotes
+                .Where(c => c.IsActive && c.Status == "Approved" && c.FarmerId == accountId && c.CreditNoteDate < untilDate)
+                .SumAsync(c => c.Amount ?? 0);
         }
-        else if (accountType == "MasterSubGroup")
+
+        return (geCredit + reCredit + psCredit + cnAmount) - (geDebit + reDebit + psDebit + dnAmount);
+    }
+
+        private async Task<string> GetAccountNameAsync(int accountId, string accountType)
+    {
+        return accountType switch
         {
-            var subGroup = await _context.MasterSubGroups.FindAsync(accountId);
-            return subGroup?.Name ?? "";
-        }
-        else if (accountType == "SubGroupLedger")
-        {
-            var ledger = await _context.SubGroupLedgers.FindAsync(accountId);
-            return ledger?.Name ?? "";
-        }
-        else if (accountType == "Farmer")
-        {
-            var farmer = await _context.Farmers.FindAsync(accountId);
-            return farmer?.FarmerName ?? "";
-        }
-        
-        return "";
+            AccountTypes.BankMaster => (await _context.BankMasters.FindAsync(accountId))?.AccountName ?? "",
+            AccountTypes.MasterGroup => (await _context.MasterGroups.FindAsync(accountId))?.Name ?? "",
+            AccountTypes.MasterSubGroup => (await _context.MasterSubGroups.FindAsync(accountId))?.Name ?? "",
+            AccountTypes.SubGroupLedger => (await _context.SubGroupLedgers.FindAsync(accountId))?.Name ?? "",
+            AccountTypes.Farmer => (await _context.Farmers.FindAsync(accountId))?.FarmerName ?? "",
+            _ => ""
+        };
     }
 
     public async Task<string> GetMediatorAccountNameAsync()
@@ -1454,6 +1628,7 @@ public class GeneralEntryService : IGeneralEntryService
             CreditAccountId = original.CreditAccountId,
             CreditAccountType = original.CreditAccountType,
             VoucherType = "Journal Entry Book",
+            PaymentType = original.EntryForName ?? "Journal",
             Unit = original.Unit
         };
 
@@ -1493,6 +1668,7 @@ public class GeneralEntryService : IGeneralEntryService
             Type = original.PaymentType,
             CreatedAt = original.CreatedAt,
             VoucherType = "Receipt Entry",
+            PaymentType = original.PaymentType,
             Unit = original.Unit
         };
 
@@ -1526,8 +1702,9 @@ public class GeneralEntryService : IGeneralEntryService
         return generalEntry;
     }
     
-    public async Task<(bool success, string message)> CreateGrowerBookEntryAsync(GeneralEntry entry, string currentUser)
+    public async Task<(bool success, string message)> CreateGrowerBookEntryAsync(GeneralEntry entry)
     {
+        var currentUser = GetCurrentUsername();
         var strategy = _context.Database.CreateExecutionStrategy();
         
         return await strategy.ExecuteAsync(async () =>
@@ -1572,6 +1749,7 @@ public class GeneralEntryService : IGeneralEntryService
                     Status = "Unapproved",
                     IsActive = true,
                     CreatedAt = DateTime.Now,
+                    CreatedBy = currentUser,
                     VoucherType = "Grower Book",
                     Type = entry.Type,
                     Unit = entry.Unit,
@@ -1613,8 +1791,9 @@ public class GeneralEntryService : IGeneralEntryService
         });
     }
 
-    public async Task<(bool success, string message)> UpdateGrowerBookEntryAsync(GeneralEntry entry, string currentUser)
+    public async Task<(bool success, string message)> UpdateGrowerBookEntryAsync(GeneralEntry entry)
     {
+        var currentUser = GetCurrentUsername();
         var strategy = _context.Database.CreateExecutionStrategy();
         
         return await strategy.ExecuteAsync(async () =>
@@ -1816,7 +1995,7 @@ public class GeneralEntryService : IGeneralEntryService
 
         return list
             .Where(b => IsAllowed(b.Id))
-            .Select(b => new { id = b.Id, name = b.AccountName, type = "BankMaster" });
+            .Select(b => new { id = b.Id, name = b.AccountName, type = AccountTypes.BankMaster });
     }
 
     public async Task<IEnumerable<LookupItem>> GetGrowerAccountsAsync(string? searchTerm, string? transactionType, string? accountSide, int? entryForId = null)
@@ -1893,8 +2072,8 @@ public class GeneralEntryService : IGeneralEntryService
             .ToListAsync();
 
         var results = new List<LookupItem>();
-        results.AddRange(bankMasters.Select(bm => new LookupItem { Id = bm.Id, Name = bm.AccountName, Type = "BankMaster", AccountNumber = bm.AccountNumber }));
-        results.AddRange(farmers.Select(f => new LookupItem { Id = f.Id, Name = f.FarmerName, Type = "Farmer", AccountNumber = f.FarmerCode }));
+        results.AddRange(bankMasters.Select(bm => new LookupItem { Id = bm.Id, Name = bm.AccountName, Type = AccountTypes.BankMaster, AccountNumber = bm.AccountNumber }));
+        results.AddRange(farmers.Select(f => new LookupItem { Id = f.Id, Name = f.FarmerName, Type = AccountTypes.Farmer, AccountNumber = f.FarmerCode }));
 
         return results.OrderBy(r => r.Name).Take(100).ToList();
     }
