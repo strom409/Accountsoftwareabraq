@@ -1,0 +1,256 @@
+@page "/inventory/packing-material-issue"
+@using AbraqAccount.Models
+@using AbraqAccount.Components.Common
+@using AbraqAccount.Services.Interfaces
+@inject NavigationManager Navigation
+@inject IInventoryService InvService
+
+<div class="page-header">
+    <div class="header-title">
+        <h1>Packing Material Issue <span class="text-muted fs-6">Control panel</span></h1>
+    </div>
+    <div class="breadcrumb-container">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Home</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Packing Material Issue</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="content-card">
+    <div class="card-header-custom">
+        <h5 class="mb-0">Packing Material Issue <span class="text-muted">- Add</span></h5>
+        <div class="header-actions">
+            <button class="btn btn-dark btn-sm" @onclick="Save">Save</button>
+            <button class="btn btn-secondary btn-sm" @onclick="GoBack"><i class="bi bi-arrow-left"></i></button>
+        </div>
+    </div>
+
+    <div class="card-body-custom">
+        <!-- Top Form Section -->
+        <div class="row g-3 mb-3">
+            <div class="col-md-2">
+                <label class="form-label label-red">Order Date *</label>
+                <div class="input-group">
+                    <input type="date" class="form-control" @bind="model.OrderDate" />
+                </div>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label label-red">Delivery Date *</label>
+                <div class="input-group">
+                    <input type="date" class="form-control" @bind="model.DeliveryDate" />
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Delivered Group</label>
+                <input type="text" class="form-control" placeholder="Search Delivered Group" @bind="model.DeliveredGroup" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label label-red">Delivered To *</label>
+                <input type="text" class="form-control" placeholder="Search by Deliver To" @bind="model.DeliveredTo" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label label-red">Challan Name *</label>
+                <input type="text" class="form-control" placeholder="Enter Challan Name" @bind="model.ChallanName" />
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-3">
+                <label class="form-label label-red">Order by *</label>
+                <input type="text" class="form-control" placeholder="Search order by" @bind="model.OrderBy" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label label-red">Demand Order No*</label>
+                <input type="text" class="form-control" placeholder="Demand Order No" @bind="model.DemandOrderNo" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Vehicle Info.</label>
+                <div class="input-group">
+                    <input type="text" class="form-control" placeholder="Search by Vehicle Info" @bind="model.VehicleInfo" />
+                    <button class="btn btn-outline-secondary" type="button"><i class="bi bi-plus"></i></button>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-4">
+            <div class="col-12">
+                <label class="form-label">Remarks</label>
+                <input type="text" class="form-control" placeholder="Enter Remarks" @bind="model.Remarks" />
+            </div>
+        </div>
+
+        <hr />
+
+        <!-- Items Section -->
+        <div class="items-section">
+            <h5 class="mb-3">Items</h5>
+            
+            <!-- Items Grid/Table -->
+            <div class="items-container">
+                 <!-- Add Item Row -->
+                <div class="row g-3 align-items-end mb-3 item-row">
+                    <div class="col-md-3">
+                        <label class="form-label label-red">Item Name*</label>
+                        <AccountSearch Placeholder="Search by Item Name" 
+                                       SearchFunc="GetItemsAsync"
+                                       OnAccountSelected="OnItemSelected" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label label-red">UOM *</label>
+                        <input type="text" class="form-control bg-light" @bind="newItem.UOM" readonly />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Unit Price</label>
+                        <input type="number" class="form-control" @bind="newItem.UnitPrice" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label label-red">Issued Qty *</label>
+                        <input type="number" class="form-control" @bind="newItem.IssuedQty" />
+                    </div>
+                    <div class="col-md-2">
+                         <label class="form-label">Total Price</label>
+                         <input type="text" class="form-control bg-light" value="@(newItem.UnitPrice * newItem.IssuedQty)" readonly />
+                    </div>
+                    <div class="col-md-1 d-flex gap-2">
+                        <button class="btn btn-success btn-sm" @onclick="AddItem">Add</button>
+                        <button class="btn btn-light btn-sm border" @onclick="ClearItem">Cancel</button>
+                    </div>
+                </div>
+
+                <!-- List of Added Items -->
+                @if (model.Items.Any())
+                {
+                    <table class="table table-bordered table-sm mt-3">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Item Name</th>
+                                <th>UOM</th>
+                                <th>Unit Price</th>
+                                <th>Issued Qty</th>
+                                <th>Total Price</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in model.Items)
+                            {
+                                <tr>
+                                    <td>@item.ItemName</td>
+                                    <td>@item.UOM</td>
+                                    <td>@item.UnitPrice</td>
+                                    <td>@item.IssuedQty</td>
+                                    <td>@(item.UnitPrice * item.IssuedQty)</td>
+                                    <td>
+                                        <button class="btn btn-danger btn-sm py-0" @onclick="() => RemoveItem(item)"><i class="bi bi-trash"></i></button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+
+        <div class="form-footer mt-4 text-end">
+            <button class="btn btn-secondary btn-dark" @onclick="Save">Save</button>
+            <button class="btn btn-light border" @onclick="GoBack">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .header-title h1 { font-size: 1.5rem; margin: 0; color: #333; }
+    .breadcrumb { margin: 0; background: transparent; padding: 0; font-size: 0.85rem; }
+    
+    .content-card { background: white; border: 1px solid #ddd; border-radius: 4px; overflow: hidden; }
+    .card-header-custom { padding: 1rem; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; background: #fff; }
+    .card-body-custom { padding: 1.5rem; }
+
+    .label-red { color: #dc3545; font-weight: 500; }
+    .form-label { font-size: 0.9rem; margin-bottom: 0.3rem; color: #555; font-weight: 500;}
+    .form-control { font-size: 0.9rem; padding: 0.5rem; border-color: #ddd; }
+    .form-control:focus { border-color: #86b7fe; box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25); }
+    
+    .items-section { border: 1px solid #eee; padding: 1rem; border-radius: 4px; background: #fff; }
+    .item-row { background: #f9f9f9; padding: 1rem; border-radius: 4px; border: 1px solid #eee; }
+</style>
+
+@code {
+    private PackingMaterialIssueViewModel model = new();
+    private PackingMaterialIssueItemViewModel newItem = new();
+
+    private void OnItemSelected(LookupItem item)
+    {
+        newItem.ItemName = item.Name;
+        newItem.UOM = item.UOM; // Ensure AccountSearch/LookupItem supports UOM or fetch it
+    }
+
+    private void AddItem()
+    {
+        if (!string.IsNullOrEmpty(newItem.ItemName) && newItem.IssuedQty > 0)
+        {
+            model.Items.Add(new PackingMaterialIssueItemViewModel
+            {
+                ItemName = newItem.ItemName,
+                UOM = newItem.UOM,
+                UnitPrice = newItem.UnitPrice,
+                IssuedQty = newItem.IssuedQty,
+            });
+            ClearItem();
+        }
+    }
+
+    private void ClearItem()
+    {
+        newItem = new();
+    }
+
+    private void RemoveItem(PackingMaterialIssueItemViewModel item)
+    {
+        model.Items.Remove(item);
+    }
+
+    private async Task<IEnumerable<LookupItem>> GetItemsAsync(string searchTerm)
+    {
+        // Use existing inventory service to find items
+        return await InvService.GetPurchaseItemsAsync(searchTerm);
+    }
+
+    private void Save()
+    {
+        // Placeholder for save logic
+        Console.WriteLine("Saving Packing Material Issue...");
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/inventory/packing-material-issue"); // Or list page if it existed
+    }
+
+    // View Model matching the UI requirements
+    public class PackingMaterialIssueViewModel
+    {
+        public DateTime OrderDate { get; set; } = DateTime.Now;
+        public DateTime DeliveryDate { get; set; } = DateTime.Now;
+        public string DeliveredGroup { get; set; } = "";
+        public string DeliveredTo { get; set; } = "";
+        public string ChallanName { get; set; } = "";
+        public string OrderBy { get; set; } = "";
+        public string DemandOrderNo { get; set; } = "";
+        public string VehicleInfo { get; set; } = "";
+        public string Remarks { get; set; } = "";
+        public List<PackingMaterialIssueItemViewModel> Items { get; set; } = new();
+    }
+
+    public class PackingMaterialIssueItemViewModel
+    {
+        public string ItemName { get; set; } = "";
+        public string UOM { get; set; } = "";
+        public decimal UnitPrice { get; set; }
+        public decimal IssuedQty { get; set; }
+    }
+}
