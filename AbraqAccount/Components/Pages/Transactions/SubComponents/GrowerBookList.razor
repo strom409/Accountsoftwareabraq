@@ -18,6 +18,16 @@
         <input type="date" @bind="toDate" />
     </div>
     <div class="filter-group">
+        <label>Unit</label>
+        <select @bind="filterUnit">
+            <option value="All">All Units</option>
+            @foreach (var u in units)
+            {
+                <option value="@u">@u</option>
+            }
+        </select>
+    </div>
+    <div class="filter-group">
         <label>Status</label>
         <select @bind="filterStatus">
             <option value="All">All Status</option>
@@ -185,12 +195,14 @@
     [Parameter] public EventCallback<string> OnEdit { get; set; }
     
     private List<GeneralEntry>? entries;
+    private List<string> units = new();
 
     // Filters
     private string? filterBookNo;
     private DateTime? fromDate;
     private DateTime? toDate;
     private string filterStatus = "Unapproved";
+    private string filterUnit = "All";
 
     // Pagination
     private int currentPage = 1;
@@ -202,6 +214,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        units = (await GeneralEntryService.GetUnitNamesAsync()).ToList();
         await LoadData();
     }
 
@@ -256,7 +269,7 @@
     private async Task LoadData()
     {
         var result = await GeneralEntryService.GetGrowerBookEntriesAsync(
-            fromDate, toDate, filterBookNo, null, null, filterStatus, currentPage, pageSize
+            fromDate, toDate, filterBookNo, null, null, filterStatus, filterUnit, currentPage, pageSize
         );
         originalEntries = result.entries ?? new List<GeneralEntry>();
         entries = originalEntries.ToList();
@@ -271,6 +284,7 @@
         fromDate = null;
         toDate = null;
         filterStatus = "Unapproved";
+        filterUnit = "All";
         currentPage = 1;
         await LoadData();
     }
