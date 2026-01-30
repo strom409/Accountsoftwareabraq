@@ -23,7 +23,6 @@ public class PackingService : IPackingService
     public async Task<List<PackingRecipe>> GetPackingRecipesAsync(string? searchTerm)
     {
         var query = _context.PackingRecipes
-            .Include(p => p.Materials)
             .AsQueryable();
 
         if (!string.IsNullOrEmpty(searchTerm))
@@ -97,11 +96,49 @@ public class PackingService : IPackingService
 
     public async Task<PackingRecipe?> GetPackingRecipeByIdAsync(long id)
     {
-        return await _context.PackingRecipes
+        var recipe = await _context.PackingRecipes
             .AsNoTracking()
-            .Include(p => p.Materials)
-                .ThenInclude(m => m.PurchaseItem)
             .FirstOrDefaultAsync(m => m.Recipeid == id);
+
+        if (recipe != null)
+        {
+            // 1. Get raw materials first (without Include) to avoid dropping rows with broken FKs
+            var materials = await _context.PackingRecipeMaterials
+                .AsNoTracking()
+                .Where(m => m.RecipeId == id && !m.flagdeleted)
+                .ToListAsync();
+                
+            if (materials.Any())
+            {
+                // 2. Get distinct Item IDs
+                var itemIds = materials.Select(m => m.packingitemid).Distinct().ToList();
+                
+                // 3. Fetch valid items
+                var items = await _context.PurchaseItems
+                    .AsNoTracking()
+                    .Where(p => itemIds.Contains(p.Id))
+                    .ToDictionaryAsync(p => p.Id);
+                    
+                // 4. Stitch manually
+                foreach (var mat in materials)
+                {
+                    if (items.TryGetValue(mat.packingitemid, out var item))
+                    {
+                        mat.PurchaseItem = item;
+                    }
+                    else
+                    {
+                        // Handle missing item (Broken FK)
+                        mat.PurchaseItem = new PurchaseItem { ItemName = "Unknown (Missing)", Code = "N/A", UOM = "" };
+                        mat.MaterialName = "Unknown (Missing)"; 
+                    }
+                }
+                
+                recipe.Materials = materials;
+            }
+        }
+
+        return recipe;
     }
 
     public async Task<(bool success, string message)> SavePackingRecipeAsync(PackingRecipe model, List<PackingRecipeMaterial> materials)
