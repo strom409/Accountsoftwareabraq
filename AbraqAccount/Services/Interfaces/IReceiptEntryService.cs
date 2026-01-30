@@ -31,5 +31,6 @@ public interface IReceiptEntryService
     Task<string> GetAccountNameAsync(int accountId, string accountType);
     Task<(bool success, string message)> ApproveReceiptEntryAsync(int id);
     Task<(bool success, string message)> UnapproveReceiptEntryAsync(int id);
+    Task<List<string>> GetUnitNamesAsync();
 }
 

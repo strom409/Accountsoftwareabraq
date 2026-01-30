@@ -220,7 +220,7 @@
 @code {
     [Parameter] public EventCallback<string> OnEdit { get; set; }
     private List<GeneralEntryGroupViewModel>? journalGroups;
-    private List<string> units = new() { "Unit 1", "Unit 2", "Abraq Agro Fresh LLP" };
+    private List<string> units = new();
     private string mediatorName = "ASSETS";
     private int currentPage = 1;
     private int pageSize = 10;
@@ -233,6 +233,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        units = (await GeneralEntryService.GetUnitNamesAsync()).ToList();
         mediatorName = (await GeneralEntryService.GetMediatorAccountNameAsync() ?? "ASSETS").Trim();
         await LoadData();
     }

@@ -1848,7 +1848,7 @@ public class GeneralEntryService : IGeneralEntryService
     }
 
     public async Task<(List<GeneralEntry> entries, int totalCount, int totalPages)> GetGrowerBookEntriesAsync(
-        DateTime? fromDate, DateTime? toDate, string? bookNo, string? fromGrower, string? toGrower, string? status, int page, int pageSize)
+        DateTime? fromDate, DateTime? toDate, string? bookNo, string? fromGrower, string? toGrower, string? status, string? unit, int page, int pageSize)
     {
         var query = _context.GeneralEntries
             .Where(g => g.IsActive && g.VoucherNo.StartsWith("GBK/"))
@@ -1858,6 +1858,7 @@ public class GeneralEntryService : IGeneralEntryService
         if (toDate.HasValue) query = query.Where(g => g.EntryDate <= toDate.Value);
         if (!string.IsNullOrEmpty(status) && status != "All") query = query.Where(g => g.Status == status);
         if (!string.IsNullOrEmpty(bookNo)) query = query.Where(g => g.VoucherNo.Contains(bookNo));
+        if (!string.IsNullOrEmpty(unit) && unit != "All") query = query.Where(g => g.Unit == unit);
 
         if (!string.IsNullOrEmpty(fromGrower))
         {

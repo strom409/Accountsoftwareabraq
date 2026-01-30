@@ -29,5 +29,6 @@ public interface IPaymentSettlementService
     Task<object?> GetPADetailsAsync(string paNumber);
     
     Task LoadDropdownsAsync(dynamic viewBag);
+    Task<List<string>> GetUnitNamesAsync();
 }
 

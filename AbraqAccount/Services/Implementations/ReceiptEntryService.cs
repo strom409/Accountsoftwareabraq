@@ -901,5 +901,14 @@ public class ReceiptEntryService : IReceiptEntryService
         }
     }
 
+    public async Task<List<string>> GetUnitNamesAsync()
+    {
+        return await _context.UnitMasters
+            .OrderBy(u => u.UnitName)
+            .Select(u => u.UnitName ?? "")
+            .Where(u => !string.IsNullOrEmpty(u))
+            .Distinct()
+            .ToListAsync();
+    }
 }
 

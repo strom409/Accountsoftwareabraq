@@ -11,49 +11,70 @@
     <EditForm Model="model" OnValidSubmit="SubmitForm">
         <DataAnnotationsValidator />
         
+    <!-- Header Fields -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="form-group-custom">
+                <label class="form-label text-muted">Debit Note Date</label>
+                @if (IsReadOnly)
+                {
+                    <div class="fw-bold fs-6">@model.DebitNoteDate.ToString("dd/MM/yyyy")</div>
+                }
+                else
+                {
+                    <input type="date" @bind="model.DebitNoteDate" class="form-control-custom" />
+                }
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="form-group-custom">
+                <label class="form-label text-muted">Entry For</label>
+                @if (IsReadOnly)
+                {
+                    <div class="fw-bold fs-6">@model.EntryForName</div>
+                }
+                else
+                {
+                    <select @onchange="OnEntryForChanged" class="form-control-custom">
+                        <option value="">Select Entry For</option>
+                        @if (entryProfiles != null)
+                        {
+                            @foreach (var profile in entryProfiles)
+                            {
+                                <option value="@profile.Id" selected="@(model.EntryForId == profile.Id)">@profile.Name</option>
+                            }
+                        }
+                    </select>
+                }
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="form-group-custom">
+                <label class="form-label text-muted">Unit</label>
+                @if (IsReadOnly)
+                {
+                    <div class="fw-bold fs-6">@model.Unit</div>
+                }
+                else
+                {
+                    <select @bind="model.Unit" class="form-control-custom">
+                        <option value="">Select</option>
+                        @foreach (var unit in unitList)
+                        {
+                            <option value="@unit">@unit</option>
+                        }
+                    </select>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Transaction Details Section -->
+    <div class="transaction-details-section">
+        <div class="section-subtitle mb-3">Transaction Details</div>
+        
         <div class="row mb-3">
-            <div class="col-md-3">
-                <div class="form-group-custom">
-                    <label class="form-label text-muted">Unit</label>
-                    @if (IsReadOnly)
-                    {
-                        <div class="fw-bold fs-6">@model.Unit</div>
-                    }
-                    else
-                    {
-                        <select @bind="model.Unit" class="form-control-custom">
-                            <option value="">Select</option>
-                            @foreach (var unit in unitList)
-                            {
-                                <option value="@unit">@unit</option>
-                            }
-                        </select>
-                    }
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="form-group-custom">
-                    <label class="form-label text-muted">Entry For</label>
-                    @if (IsReadOnly)
-                    {
-                        <div class="fw-bold fs-6">@model.EntryForName</div>
-                    }
-                    else
-                    {
-                        <select @onchange="OnEntryForChanged" class="form-control-custom">
-                            <option value="">Select Entry For</option>
-                            @if (entryProfiles != null)
-                            {
-                                @foreach (var profile in entryProfiles)
-                                {
-                                    <option value="@profile.Id" selected="@(model.EntryForId == profile.Id)">@profile.Name</option>
-                                }
-                            }
-                        </select>
-                    }
-                </div>
-            </div>
-            <div class="col-md-3">
+             <div class="col-md-4">
                 <div class="form-group-custom">
                     <label class="form-label text-muted">Credit Account <span class="text-danger">*</span></label>
                     @if (IsReadOnly)
@@ -72,7 +93,7 @@
                     }
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-4">
                 <div class="form-group-custom">
                     <label class="form-label text-muted">Debit Account <span class="text-danger">*</span></label>
                     @if (IsReadOnly)
@@ -91,23 +112,7 @@
                     }
                 </div>
             </div>
-        </div>
-
-        <div class="row mb-4">
-            <div class="col-md-3">
-                <div class="form-group-custom">
-                    <label class="form-label text-muted">Debit Note Date</label>
-                    @if (IsReadOnly)
-                    {
-                        <div class="fw-bold fs-6">@model.DebitNoteDate.ToString("dd/MM/yyyy")</div>
-                    }
-                    else
-                    {
-                        <input type="date" @bind="model.DebitNoteDate" class="form-control-custom" />
-                    }
-                </div>
-            </div>
-            <div class="col-md-3">
+             <div class="col-md-4">
                 <div class="form-group-custom">
                     <label class="form-label text-muted">Amount <span class="text-danger">*</span></label>
                     @if (IsReadOnly)
@@ -120,7 +125,10 @@
                     }
                 </div>
             </div>
-            <div class="col-md-6">
+        </div>
+        
+        <div class="row mb-4">
+            <div class="col-md-12">
                 <div class="form-group-custom">
                     <label class="form-label text-muted">Narration</label>
                     @if (IsReadOnly)
@@ -129,7 +137,7 @@
                     }
                     else
                     {
-                        <textarea @bind="model.Narration" class="form-control-custom" rows="1" placeholder="Enter Narration"></textarea>
+                        <textarea @bind="model.Narration" class="form-control-custom" rows="2" placeholder="Enter Narration"></textarea>
                     }
                 </div>
             </div>
@@ -141,6 +149,7 @@
             <button type="button" class="btn-clear-custom" @onclick="ClearForm">Clear</button>
         </div>
         }
+    </div>
 
         <div class="form-footer-actions">
             @if (!IsReadOnly)
@@ -229,6 +238,13 @@
         padding: 0.5rem 2rem;
         border-radius: 4px;
         font-weight: 500;
+    }
+    .section-subtitle {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #444;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 0.5rem;
     }
 </style>
 

@@ -218,7 +218,7 @@
 @code {
     [Parameter] public EventCallback<string> OnEdit { get; set; }
     private List<ReceiptEntryGroupViewModel>? receiptGroups;
-    private List<string> units = new() { "Unit 1", "Unit 2", "Abraq Agro Fresh LLP" };
+    private List<string> units = new();
     private int currentPage = 1;
     private int pageSize = 10;
     private int totalCount = 0;
@@ -230,6 +230,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        units = (await ReceiptEntryService.GetUnitNamesAsync()).ToList();
         await LoadData();
     }
 

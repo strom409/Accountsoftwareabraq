@@ -53,7 +53,7 @@ public interface IGeneralEntryService
 
     Task<(bool success, string message)> CreateGrowerBookEntryAsync(GeneralEntry entry);
     Task<(bool success, string message)> UpdateGrowerBookEntryAsync(GeneralEntry entry);
-    Task<(List<GeneralEntry> entries, int totalCount, int totalPages)> GetGrowerBookEntriesAsync(DateTime? fromDate, DateTime? toDate, string? bookNo, string? fromGrower, string? toGrower, string? status, int page, int pageSize);
+    Task<(List<GeneralEntry> entries, int totalCount, int totalPages)> GetGrowerBookEntriesAsync(DateTime? fromDate, DateTime? toDate, string? bookNo, string? fromGrower, string? toGrower, string? status, string? unit, int page, int pageSize);
 
     Task<string> GetMediatorAccountNameAsync();
     

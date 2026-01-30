@@ -236,7 +236,7 @@
 @code {
     [Parameter] public EventCallback<int> OnEdit { get; set; }
     private List<CreditNote>? creditNotes;
-    private List<string> units = new() { "Unit 1", "Unit 2", "Abraq Agro Fresh LLP" };
+    private List<string> units = new();
     private IEnumerable<SelectListItem>? growerGroups;
     private List<dynamic>? farmers;
     private int currentPage = 1;
@@ -250,6 +250,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        units = (await CreditNoteService.GetUnitNamesAsync()).ToList();
         await LoadDropdowns();
         await LoadData();
     }
