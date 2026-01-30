@@ -88,6 +88,10 @@
                 }
             }
         }
+        catch (NavigationException)
+        {
+            // Ignore exception to prevent debugger break
+        }
         catch (InvalidOperationException)
         {
         }

@@ -14,14 +14,21 @@ public class SettingsService : ISettingsService
         _context = context;
     }
 
-    // --- Entry For ---
+    #region Entry For
 
     public async Task<List<EntryForAccount>> GetEntryForAccountsAsync()
     {
-        return await _context.EntryForAccounts
-            .OrderBy(e => e.TransactionType)
-            .ThenBy(e => e.AccountName)
-            .ToListAsync();
+        try
+        {
+            return await _context.EntryForAccounts
+                .OrderBy(e => e.TransactionType)
+                .ThenBy(e => e.AccountName)
+                .ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<(bool success, string message)> CreateEntryForAccountAsync(EntryForAccount model)
@@ -41,7 +48,14 @@ public class SettingsService : ISettingsService
 
     public async Task<EntryForAccount?> GetEntryForAccountByIdAsync(int id)
     {
-        return await _context.EntryForAccounts.FindAsync(id);
+        try
+        {
+            return await _context.EntryForAccounts.FindAsync(id);
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<(bool success, string message)> UpdateEntryForAccountAsync(int id, EntryForAccount model)
@@ -65,22 +79,37 @@ public class SettingsService : ISettingsService
 
     public async Task DeleteEntryForAccountAsync(int id)
     {
-        var entry = await _context.EntryForAccounts.FindAsync(id);
-        if (entry != null)
+        try
         {
-            _context.EntryForAccounts.Remove(entry);
-            await _context.SaveChangesAsync();
+            var entry = await _context.EntryForAccounts.FindAsync(id);
+            if (entry != null)
+            {
+                _context.EntryForAccounts.Remove(entry);
+                await _context.SaveChangesAsync();
+            }
+        }
+        catch (Exception)
+        {
+            throw;
         }
     }
+    #endregion
 
-    // --- Transaction Rules ---
+    #region Transaction Rules
 
     public async Task<List<AccountRule>> GetAccountRulesAsync()
     {
-        return await _context.AccountRules
-            .OrderBy(r => r.AccountType)
-            .ThenBy(r => r.RuleType)
-            .ToListAsync();
+        try
+        {
+            return await _context.AccountRules
+                .OrderBy(r => r.AccountType)
+                .ThenBy(r => r.RuleType)
+                .ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<(bool success, string message)> CreateAccountRuleAsync(AccountRule model)
@@ -100,7 +129,14 @@ public class SettingsService : ISettingsService
 
     public async Task<AccountRule?> GetAccountRuleByIdAsync(int id)
     {
-        return await _context.AccountRules.FindAsync(id);
+        try
+        {
+            return await _context.AccountRules.FindAsync(id);
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<(bool success, string message)> UpdateAccountRuleAsync(int id, AccountRule model)
@@ -128,61 +164,84 @@ public class SettingsService : ISettingsService
 
     public async Task DeleteAccountRuleAsync(int id)
     {
-        var rule = await _context.AccountRules.FindAsync(id);
-        if (rule != null)
+        try
         {
-            _context.AccountRules.Remove(rule);
-            await _context.SaveChangesAsync();
+            var rule = await _context.AccountRules.FindAsync(id);
+            if (rule != null)
+            {
+                _context.AccountRules.Remove(rule);
+                await _context.SaveChangesAsync();
+            }
+        }
+        catch (Exception)
+        {
+            throw;
         }
     }
+    #endregion
 
-    // --- Lookups ---
+    #region Lookups
 
     public async Task<IEnumerable<LookupItem>> GetAvailableAccountsForRulesAsync(string accountType)
     {
-        return accountType switch
+        try
         {
-            "MasterGroup" => await _context.MasterGroups.OrderBy(g => g.Name).Select(g => new LookupItem { Id = g.Id, Name = g.Name }).ToListAsync(),
-            "MasterSubGroup" => await _context.MasterSubGroups.OrderBy(g => g.Name).Select(g => new LookupItem { Id = g.Id, Name = g.Name }).ToListAsync(),
-            "SubGroupLedger" => await _context.SubGroupLedgers.OrderBy(g => g.Name).Select(g => new LookupItem { Id = g.Id, Name = g.Name }).ToListAsync(),
-            "BankMaster" => await _context.BankMasters.OrderBy(b => b.AccountName).Select(b => new LookupItem { Id = b.Id, Name = b.AccountName }).ToListAsync(),
-            "GrowerGroup" => await _context.GrowerGroups.OrderBy(g => g.GroupName).Select(g => new LookupItem { Id = g.Id, Name = g.GroupName }).ToListAsync(),
-            _ => new List<LookupItem>()
-        };
+            return accountType switch
+            {
+                "MasterGroup" => await _context.MasterGroups.OrderBy(g => g.Name).Select(g => new LookupItem { Id = g.Id, Name = g.Name }).ToListAsync(),
+                "MasterSubGroup" => await _context.MasterSubGroups.OrderBy(g => g.Name).Select(g => new LookupItem { Id = g.Id, Name = g.Name }).ToListAsync(),
+                "SubGroupLedger" => await _context.SubGroupLedgers.OrderBy(g => g.Name).Select(g => new LookupItem { Id = g.Id, Name = g.Name }).ToListAsync(),
+                "BankMaster" => await _context.BankMasters.OrderBy(b => b.AccountName).Select(b => new LookupItem { Id = b.Id, Name = b.AccountName }).ToListAsync(),
+                "GrowerGroup" => await _context.GrowerGroups.OrderBy(g => g.GroupName).Select(g => new LookupItem { Id = g.Id, Name = g.GroupName }).ToListAsync(),
+                _ => new List<LookupItem>()
+            };
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
+    #endregion
 
-    // --- Dashboard ---
+    #region Dashboard
 
     public async Task<List<RulesItemViewModel>> GetRulesDashboardDataAsync(int? entryForId)
     {
-        var result = new List<RulesItemViewModel>();
-
-        // 1. Fetch only Sub Group Ledgers (Owners)
-        var subGroupLedgers = await _context.SubGroupLedgers
-            .Include(s => s.MasterGroup)
-            .Include(s => s.MasterSubGroup)
-            .OrderBy(s => s.Name)
-            .ToListAsync();
-
-        // 2. Fetch existing rules for this profile
-        var existingRules = await _context.AccountRules
-            .Where(r => r.EntryAccountId == entryForId && r.RuleType == "AllowedNature")
-            .ToListAsync();
-
-        // 3. Map to View Model
-        foreach (var sgl in subGroupLedgers)
+        try
         {
-            result.Add(new RulesItemViewModel {
-                AccountType = "SubGroupLedger",
-                AccountId = sgl.Id,
-                Name = sgl.Name,
-                Hierarchy = $"{(sgl.MasterGroup?.Name ?? "")} > {(sgl.MasterSubGroup?.Name ?? "")}",
-                GroupName = "Sub Group Ledgers",
-                RuleValue = existingRules.FirstOrDefault(r => r.AccountType == "SubGroupLedger" && r.AccountId == sgl.Id)?.Value ?? "Cancel"
-            });
-        }
+            var result = new List<RulesItemViewModel>();
 
-        return result;
+            // 1. Fetch only Sub Group Ledgers (Owners)
+            var subGroupLedgers = await _context.SubGroupLedgers
+                .Include(s => s.MasterGroup)
+                .Include(s => s.MasterSubGroup)
+                .OrderBy(s => s.Name)
+                .ToListAsync();
+
+            // 2. Fetch existing rules for this profile
+            var existingRules = await _context.AccountRules
+                .Where(r => r.EntryAccountId == entryForId && r.RuleType == "AllowedNature")
+                .ToListAsync();
+
+            // 3. Map to View Model
+            foreach (var sgl in subGroupLedgers)
+            {
+                result.Add(new RulesItemViewModel {
+                    AccountType = "SubGroupLedger",
+                    AccountId = sgl.Id,
+                    Name = sgl.Name,
+                    Hierarchy = $"{(sgl.MasterGroup?.Name ?? "")} > {(sgl.MasterSubGroup?.Name ?? "")}",
+                    GroupName = "Sub Group Ledgers",
+                    RuleValue = existingRules.FirstOrDefault(r => r.AccountType == "SubGroupLedger" && r.AccountId == sgl.Id)?.Value ?? "Cancel"
+                });
+            }
+
+            return result;
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<(bool success, string message)> SaveAccountRuleByValueAsync(string accountType, int accountId, string value, int? entryForId)
@@ -224,28 +283,36 @@ public class SettingsService : ISettingsService
 
     public async Task<List<EntryForAccount>> GetFormattedEntryProfilesAsync(string transactionType)
     {
-        var allEntries = await _context.EntryForAccounts
-            .Where(e => e.TransactionType == "Global" || e.TransactionType == transactionType)
-            .OrderBy(e => e.TransactionType)
-            .ThenBy(e => e.AccountName)
-            .ToListAsync();
-
-        var result = new List<EntryForAccount>();
-        var grouped = allEntries.GroupBy(e => e.TransactionType);
-
-        foreach (var group in grouped)
+        try
         {
-            var hasValidAccount = group.Any(e => !string.IsNullOrWhiteSpace(e.AccountName) && e.AccountName.Trim().ToLower() != "null");
-            if (hasValidAccount)
+            var allEntries = await _context.EntryForAccounts
+                .Where(e => e.TransactionType == "Global" || e.TransactionType == transactionType)
+                .OrderBy(e => e.TransactionType)
+                .ThenBy(e => e.AccountName)
+                .ToListAsync();
+
+            var result = new List<EntryForAccount>();
+            var grouped = allEntries.GroupBy(e => e.TransactionType);
+
+            foreach (var group in grouped)
             {
-                result.AddRange(group.Where(e => !string.IsNullOrWhiteSpace(e.AccountName) && e.AccountName.Trim().ToLower() != "null"));
+                var hasValidAccount = group.Any(e => !string.IsNullOrWhiteSpace(e.AccountName) && e.AccountName.Trim().ToLower() != "null");
+                if (hasValidAccount)
+                {
+                    result.AddRange(group.Where(e => !string.IsNullOrWhiteSpace(e.AccountName) && e.AccountName.Trim().ToLower() != "null"));
+                }
+                else
+                {
+                    var first = group.FirstOrDefault();
+                    if (first != null) result.Add(first);
+                }
             }
-            else
-            {
-                var first = group.FirstOrDefault();
-                if (first != null) result.Add(first);
-            }
+            return result.OrderBy(e => e.TransactionType).ThenBy(e => e.AccountName).ToList();
         }
-        return result.OrderBy(e => e.TransactionType).ThenBy(e => e.AccountName).ToList();
+        catch (Exception)
+        {
+            throw;
+        }
     }
+    #endregion
 }

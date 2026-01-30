@@ -14,95 +14,157 @@ public class VendorService : IVendorService
         _context = context;
     }
 
+    #region Retrieval
     public async Task<IEnumerable<Vendor>> GetAllActiveVendorsAsync()
     {
-        return await _context.Vendors
-            .Where(v => v.IsActive)
-            .OrderBy(v => v.VendorName)
-            .ToListAsync();
+        try
+        {
+            return await _context.Vendors
+                .Where(v => v.IsActive)
+                .OrderBy(v => v.VendorName)
+                .ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<Vendor?> GetVendorByIdAsync(int id)
     {
-        return await _context.Vendors.FindAsync(id);
+        try
+        {
+            return await _context.Vendors.FindAsync(id);
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<IEnumerable<object>> SearchVendorsAsync(string? searchTerm)
     {
-        var query = _context.Vendors.Where(v => v.IsActive).AsQueryable();
-
-        if (!string.IsNullOrEmpty(searchTerm) && searchTerm.Trim().Length > 0)
+        try
         {
-            query = query.Where(v => v.VendorName.Contains(searchTerm.Trim()) || 
-                                     v.VendorCode.Contains(searchTerm.Trim()));
+            var query = _context.Vendors.Where(v => v.IsActive).AsQueryable();
+
+            if (!string.IsNullOrEmpty(searchTerm) && searchTerm.Trim().Length > 0)
+            {
+                query = query.Where(v => v.VendorName.Contains(searchTerm.Trim()) || 
+                                         v.VendorCode.Contains(searchTerm.Trim()));
+            }
+
+            return await query
+                .OrderBy(v => v.VendorName)
+                .Select(v => new { id = v.Id, name = v.VendorName, code = v.VendorCode })
+                .Take(100)
+                .ToListAsync();
         }
-
-        return await query
-            .OrderBy(v => v.VendorName)
-            .Select(v => new { id = v.Id, name = v.VendorName, code = v.VendorCode })
-            .Take(100)
-            .ToListAsync();
+        catch (Exception)
+        {
+            throw;
+        }
     }
+    #endregion
 
+    #region Management
     public async Task<Vendor> CreateVendorAsync(Vendor vendor)
     {
-        vendor.VendorCode = await GenerateVendorCodeAsync();
-        vendor.CreatedAt = DateTime.Now;
-        vendor.IsActive = true;
+        try
+        {
+            vendor.VendorCode = await GenerateVendorCodeAsync();
+            vendor.CreatedAt = DateTime.Now;
+            vendor.IsActive = true;
 
-        _context.Add(vendor);
-        await _context.SaveChangesAsync();
-        return vendor;
+            _context.Add(vendor);
+            await _context.SaveChangesAsync();
+            return vendor;
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<Vendor> UpdateVendorAsync(Vendor vendor)
     {
-        _context.Update(vendor);
-        await _context.SaveChangesAsync();
-        return vendor;
+        try
+        {
+            _context.Update(vendor);
+            await _context.SaveChangesAsync();
+            return vendor;
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<bool> DeleteVendorAsync(int id)
     {
-        var vendor = await _context.Vendors.FindAsync(id);
-        if (vendor != null)
+        try
         {
-            vendor.IsActive = false;
-            _context.Update(vendor);
-            await _context.SaveChangesAsync();
-            return true;
+            var vendor = await _context.Vendors.FindAsync(id);
+            if (vendor != null)
+            {
+                vendor.IsActive = false;
+                _context.Update(vendor);
+                await _context.SaveChangesAsync();
+                return true;
+            }
+            return false;
         }
-        return false;
+        catch (Exception)
+        {
+            throw;
+        }
     }
+    #endregion
 
+    #region Helpers
     public async Task<bool> VendorExistsAsync(int id)
     {
-        return await _context.Vendors.AnyAsync(e => e.Id == id);
+        try
+        {
+            return await _context.Vendors.AnyAsync(e => e.Id == id);
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<string> GenerateVendorCodeAsync()
     {
-        var lastVendor = await _context.Vendors
-            .OrderByDescending(v => v.Id)
-            .FirstOrDefaultAsync();
-
-        if (lastVendor == null)
+        try
         {
+            var lastVendor = await _context.Vendors
+                .OrderByDescending(v => v.Id)
+                .FirstOrDefaultAsync();
+
+            if (lastVendor == null)
+            {
+                return "V001";
+            }
+
+            var lastCode = lastVendor.VendorCode;
+            if (string.IsNullOrEmpty(lastCode) || !lastCode.StartsWith("V"))
+            {
+                return "V001";
+            }
+
+            if (int.TryParse(lastCode.Substring(1), out int lastNumber))
+            {
+                return $"V{(lastNumber + 1):D3}";
+            }
+
             return "V001";
         }
-
-        var lastCode = lastVendor.VendorCode;
-        if (string.IsNullOrEmpty(lastCode) || !lastCode.StartsWith("V"))
+        catch (Exception)
         {
-            return "V001";
+            throw;
         }
-
-        if (int.TryParse(lastCode.Substring(1), out int lastNumber))
-        {
-            return $"V{(lastNumber + 1):D3}";
-        }
-
-        return "V001";
     }
+    #endregion
 }
 

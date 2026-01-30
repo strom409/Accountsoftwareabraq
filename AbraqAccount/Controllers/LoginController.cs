@@ -17,7 +17,7 @@ public class LoginController : Controller
     }
 
     [HttpPost("login")]
-    [ValidateAntiForgeryToken]
+    // [ValidateAntiForgeryToken]
     public async Task<IActionResult> Login([FromForm] string username, [FromForm] string password)
     {
         var user = await _accountService.AuthenticateUserAsync(username, password);

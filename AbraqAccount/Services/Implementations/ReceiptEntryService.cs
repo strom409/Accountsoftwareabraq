@@ -38,6 +38,7 @@ public class ReceiptEntryService : IReceiptEntryService
         }
     }
 
+    #region Retrieval
     public async Task<(List<ReceiptEntryGroupViewModel> groups, int totalCount, int totalPages)> GetReceiptEntriesAsync(
         string? voucherNo, 
         string? growerGroup, 
@@ -49,183 +50,192 @@ public class ReceiptEntryService : IReceiptEntryService
         int page, 
         int pageSize)
     {
-        var query = _context.ReceiptEntries.Where(r => r.IsActive).AsQueryable();
-        
-        if (!string.IsNullOrEmpty(unit) && unit != "ALL")
+        try
         {
-            query = query.Where(r => r.Unit == unit);
-        }
-
-        if (!string.IsNullOrEmpty(voucherNo))
-        {
-            query = query.Where(r => r.VoucherNo.Contains(voucherNo));
-        }
-
-        if (!string.IsNullOrEmpty(growerGroup))
-        {
-            // Filter by account name - now includes BankMasters
-            var bankMasterIdsGroup = await _context.BankMasters
-                .Where(bm => bm.IsActive && bm.AccountName.Contains(growerGroup))
-                .Select(bm => bm.Id)
-                .ToListAsync();
+            var query = _context.ReceiptEntries.Where(r => r.IsActive).AsQueryable();
             
-            var masterGroupIds = await _context.MasterGroups
-                .Where(mg => mg.Name.Contains(growerGroup))
-                .Select(mg => mg.Id)
-                .ToListAsync();
-            
-            var masterSubGroupIds = await _context.MasterSubGroups
-                .Where(msg => msg.Name.Contains(growerGroup))
-                .Select(msg => msg.Id)
-                .ToListAsync();
-            
-            var subGroupLedgerIds = await _context.SubGroupLedgers
-                .Where(sgl => sgl.Name.Contains(growerGroup))
-                .Select(sgl => sgl.Id)
-                .ToListAsync();
-            
-            query = query.Where(r => 
-                (r.AccountType == "BankMaster" && bankMasterIdsGroup.Contains(r.AccountId)) ||
-                (r.AccountType == "MasterGroup" && masterGroupIds.Contains(r.AccountId)) ||
-                (r.AccountType == "MasterSubGroup" && masterSubGroupIds.Contains(r.AccountId)) ||
-                (r.AccountType == "SubGroupLedger" && subGroupLedgerIds.Contains(r.AccountId)));
-        }
-
-        if (!string.IsNullOrEmpty(growerName))
-        {
-            var bankMasterIdsName = await _context.BankMasters
-                .Where(bm => bm.IsActive && bm.AccountName.Contains(growerName))
-                .Select(bm => bm.Id)
-                .ToListAsync();
-            
-            var masterGroupIds = await _context.MasterGroups
-                .Where(mg => mg.Name.Contains(growerName))
-                .Select(mg => mg.Id)
-                .ToListAsync();
-            
-            var masterSubGroupIds = await _context.MasterSubGroups
-                .Where(msg => msg.Name.Contains(growerName))
-                .Select(msg => msg.Id)
-                .ToListAsync();
-            
-            var subGroupLedgerIds = await _context.SubGroupLedgers
-                .Where(sgl => sgl.Name.Contains(growerName))
-                .Select(sgl => sgl.Id)
-                .ToListAsync();
-            
-            query = query.Where(r => 
-                (r.AccountType == "BankMaster" && bankMasterIdsName.Contains(r.AccountId)) ||
-                (r.AccountType == "MasterGroup" && masterGroupIds.Contains(r.AccountId)) ||
-                (r.AccountType == "MasterSubGroup" && masterSubGroupIds.Contains(r.AccountId)) ||
-                (r.AccountType == "SubGroupLedger" && subGroupLedgerIds.Contains(r.AccountId)));
-        }
-
-        if (!string.IsNullOrEmpty(status))
-        {
-            query = query.Where(r => r.Status == status);
-        }
-
-        if (fromDate.HasValue)
-        {
-            query = query.Where(r => r.ReceiptDate >= fromDate.Value);
-        }
-
-        if (toDate.HasValue)
-        {
-            query = query.Where(r => r.ReceiptDate <= toDate.Value);
-        }
-
-        // Get matching voucher numbers first
-        var matchingVoucherNos = await query
-            .Select(r => r.VoucherNo)
-            .Distinct()
-            .ToListAsync();
-
-        // Now fetch ALL entries for these vouchers to ensure we have complete data for summation
-        var allReceiptEntries = await _context.ReceiptEntries
-            .Where(r => r.IsActive && matchingVoucherNos.Contains(r.VoucherNo))
-            .OrderByDescending(r => r.CreatedAt)
-            .ToListAsync();
-        
-        // Group entries by VoucherNo
-        var groupedEntries = allReceiptEntries
-            .GroupBy(r => r.VoucherNo)
-            .Select(g => new
+            if (!string.IsNullOrEmpty(unit) && unit != "ALL")
             {
-                VoucherNo = g.Key,
-                Entries = g.OrderBy(e => e.CreatedAt).ToList()
-            })
-            .OrderByDescending(g => g.Entries.First().CreatedAt)
-            .ToList();
-        
-        // Calculate total count for pagination
-        var totalGroups = groupedEntries.Count;
-        var totalPages = (int)Math.Ceiling(totalGroups / (double)pageSize);
-        
-        // Apply pagination to groups
-        var paginatedGroups = groupedEntries
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToList();
-        
-        // Create view model for grouped entries
-        var groupedViewModels = new List<ReceiptEntryGroupViewModel>();
-        
-        foreach (var group in paginatedGroups)
-        {
-            var creditEntries = group.Entries.Where(e => e.Type == "Credit").ToList();
-            var debitEntries = group.Entries.Where(e => e.Type == "Debit").ToList();
-            
-            var creditEntry = creditEntries.FirstOrDefault();
-            var debitEntry = debitEntries.FirstOrDefault();
-            
-            if (creditEntry != null)
-            {
-                var names = new List<string>();
-                
-                // Populate Account Name for Credit Entry
-                var creditAccountName = await GetAccountNameAsync(creditEntry.AccountId, creditEntry.AccountType);
-                creditEntry.AccountName = creditAccountName; // Explicitly set for UI
-                if (!string.IsNullOrEmpty(creditAccountName)) names.Add(creditAccountName);
-
-                // Populate Account Name for Debit Entry if exists
-                if (debitEntry != null)
-                {
-                    var debitAccountName = await GetAccountNameAsync(debitEntry.AccountId, debitEntry.AccountType);
-                    debitEntry.AccountName = debitAccountName; // Explicitly set for UI
-                    if (!string.IsNullOrEmpty(debitAccountName)) names.Add(debitAccountName);
-                }
-                else 
-                {
-                     // Fallback check if there are other credit entries that might be relevant for the aggregated name
-                     foreach (var ce in creditEntries.Skip(1))
-                     {
-                        var name = await GetAccountNameAsync(ce.AccountId, ce.AccountType);
-                        if (!string.IsNullOrEmpty(name)) names.Add(name);
-                     }
-                }
-
-                var viewModel = new ReceiptEntryGroupViewModel
-                {
-                    CreditEntry = creditEntry,
-                    DebitEntry = debitEntry,
-                    VoucherNo = creditEntry.VoucherNo,
-                    ReceiptDate = creditEntry.ReceiptDate,
-                    AccountName = string.Join(", ", names.Distinct()),
-                    ReceiptAmount = creditEntries.Sum(e => e.Amount),
-                    Status = creditEntry.Status,
-                    CreditEntryId = creditEntry.Id,
-                    DebitEntryId = debitEntry?.Id ?? 0,
-                    Unit = creditEntry.Unit
-                };
-                
-                groupedViewModels.Add(viewModel);
+                query = query.Where(r => r.Unit == unit);
             }
+
+            if (!string.IsNullOrEmpty(voucherNo))
+            {
+                query = query.Where(r => r.VoucherNo.Contains(voucherNo));
+            }
+
+            if (!string.IsNullOrEmpty(growerGroup))
+            {
+                // Filter by account name - now includes BankMasters
+                var bankMasterIdsGroup = await _context.BankMasters
+                    .Where(bm => bm.IsActive && bm.AccountName.Contains(growerGroup))
+                    .Select(bm => bm.Id)
+                    .ToListAsync();
+                
+                var masterGroupIds = await _context.MasterGroups
+                    .Where(mg => mg.Name.Contains(growerGroup))
+                    .Select(mg => mg.Id)
+                    .ToListAsync();
+                
+                var masterSubGroupIds = await _context.MasterSubGroups
+                    .Where(msg => msg.Name.Contains(growerGroup))
+                    .Select(msg => msg.Id)
+                    .ToListAsync();
+                
+                var subGroupLedgerIds = await _context.SubGroupLedgers
+                    .Where(sgl => sgl.Name.Contains(growerGroup))
+                    .Select(sgl => sgl.Id)
+                    .ToListAsync();
+                
+                query = query.Where(r => 
+                    (r.AccountType == "BankMaster" && bankMasterIdsGroup.Contains(r.AccountId)) ||
+                    (r.AccountType == "MasterGroup" && masterGroupIds.Contains(r.AccountId)) ||
+                    (r.AccountType == "MasterSubGroup" && masterSubGroupIds.Contains(r.AccountId)) ||
+                    (r.AccountType == "SubGroupLedger" && subGroupLedgerIds.Contains(r.AccountId)));
+            }
+
+            if (!string.IsNullOrEmpty(growerName))
+            {
+                var bankMasterIdsName = await _context.BankMasters
+                    .Where(bm => bm.IsActive && bm.AccountName.Contains(growerName))
+                    .Select(bm => bm.Id)
+                    .ToListAsync();
+                
+                var masterGroupIds = await _context.MasterGroups
+                    .Where(mg => mg.Name.Contains(growerName))
+                    .Select(mg => mg.Id)
+                    .ToListAsync();
+                
+                var masterSubGroupIds = await _context.MasterSubGroups
+                    .Where(msg => msg.Name.Contains(growerName))
+                    .Select(msg => msg.Id)
+                    .ToListAsync();
+                
+                var subGroupLedgerIds = await _context.SubGroupLedgers
+                    .Where(sgl => sgl.Name.Contains(growerName))
+                    .Select(sgl => sgl.Id)
+                    .ToListAsync();
+                
+                query = query.Where(r => 
+                    (r.AccountType == "BankMaster" && bankMasterIdsName.Contains(r.AccountId)) ||
+                    (r.AccountType == "MasterGroup" && masterGroupIds.Contains(r.AccountId)) ||
+                    (r.AccountType == "MasterSubGroup" && masterSubGroupIds.Contains(r.AccountId)) ||
+                    (r.AccountType == "SubGroupLedger" && subGroupLedgerIds.Contains(r.AccountId)));
+            }
+
+            if (!string.IsNullOrEmpty(status))
+            {
+                query = query.Where(r => r.Status == status);
+            }
+
+            if (fromDate.HasValue)
+            {
+                query = query.Where(r => r.ReceiptDate >= fromDate.Value);
+            }
+
+            if (toDate.HasValue)
+            {
+                query = query.Where(r => r.ReceiptDate <= toDate.Value);
+            }
+
+            // Get matching voucher numbers first
+            var matchingVoucherNos = await query
+                .Select(r => r.VoucherNo)
+                .Distinct()
+                .ToListAsync();
+
+            // Now fetch ALL entries for these vouchers to ensure we have complete data for summation
+            var allReceiptEntries = await _context.ReceiptEntries
+                .Where(r => r.IsActive && matchingVoucherNos.Contains(r.VoucherNo))
+                .OrderByDescending(r => r.CreatedAt)
+                .ToListAsync();
+            
+            // Group entries by VoucherNo
+            var groupedEntries = allReceiptEntries
+                .GroupBy(r => r.VoucherNo)
+                .Select(g => new
+                {
+                    VoucherNo = g.Key,
+                    Entries = g.OrderBy(e => e.CreatedAt).ToList()
+                })
+                .OrderByDescending(g => g.Entries.First().CreatedAt)
+                .ToList();
+            
+            // Calculate total count for pagination
+            var totalGroups = groupedEntries.Count;
+            var totalPages = (int)Math.Ceiling(totalGroups / (double)pageSize);
+            
+            // Apply pagination to groups
+            var paginatedGroups = groupedEntries
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
+            
+            // Create view model for grouped entries
+            var groupedViewModels = new List<ReceiptEntryGroupViewModel>();
+            
+            foreach (var group in paginatedGroups)
+            {
+                var creditEntries = group.Entries.Where(e => e.Type == "Credit").ToList();
+                var debitEntries = group.Entries.Where(e => e.Type == "Debit").ToList();
+                
+                var creditEntry = creditEntries.FirstOrDefault();
+                var debitEntry = debitEntries.FirstOrDefault();
+                
+                if (creditEntry != null)
+                {
+                    var names = new List<string>();
+                    
+                    // Populate Account Name for Credit Entry
+                    var creditAccountName = await GetAccountNameAsync(creditEntry.AccountId, creditEntry.AccountType);
+                    creditEntry.AccountName = creditAccountName; // Explicitly set for UI
+                    if (!string.IsNullOrEmpty(creditAccountName)) names.Add(creditAccountName);
+
+                    // Populate Account Name for Debit Entry if exists
+                    if (debitEntry != null)
+                    {
+                        var debitAccountName = await GetAccountNameAsync(debitEntry.AccountId, debitEntry.AccountType);
+                        debitEntry.AccountName = debitAccountName; // Explicitly set for UI
+                        if (!string.IsNullOrEmpty(debitAccountName)) names.Add(debitAccountName);
+                    }
+                    else 
+                    {
+                         // Fallback check if there are other credit entries that might be relevant for the aggregated name
+                         foreach (var ce in creditEntries.Skip(1))
+                         {
+                            var name = await GetAccountNameAsync(ce.AccountId, ce.AccountType);
+                            if (!string.IsNullOrEmpty(name)) names.Add(name);
+                         }
+                    }
+
+                    var viewModel = new ReceiptEntryGroupViewModel
+                    {
+                        CreditEntry = creditEntry,
+                        DebitEntry = debitEntry,
+                        VoucherNo = creditEntry.VoucherNo,
+                        ReceiptDate = creditEntry.ReceiptDate,
+                        AccountName = string.Join(", ", names.Distinct()),
+                        ReceiptAmount = creditEntries.Sum(e => e.Amount),
+                        Status = creditEntry.Status,
+                        CreditEntryId = creditEntry.Id,
+                        DebitEntryId = debitEntry?.Id ?? 0,
+                        Unit = creditEntry.Unit
+                    };
+                    
+                    groupedViewModels.Add(viewModel);
+                }
+            }
+
+            return (groupedViewModels, totalGroups, totalPages);
         }
-
-        return (groupedViewModels, totalGroups, totalPages);
+        catch (Exception)
+        {
+            throw;
+        }
     }
+    #endregion
 
+    #region Management
     public async Task<(bool success, string message)> CreateMultipleReceiptsAsync(ReceiptEntryBatchModel model)
     {
         var currentUser = GetCurrentUsername();
@@ -340,7 +350,9 @@ public class ReceiptEntryService : IReceiptEntryService
             return (false, "An error occurred while saving: " + ex.Message);
         }
     }
+    #endregion
 
+    #region Details
     public async Task<(bool success, object? data, string? error)> GetVoucherDetailsAsync(string voucherNo)
     {
         try
@@ -413,7 +425,9 @@ public class ReceiptEntryService : IReceiptEntryService
             return (false, null, ex.Message);
         }
     }
+    #endregion
 
+    #region Delete
     public async Task<(bool success, string message)> DeleteReceiptEntryAsync(int id)
     {
         var entry = await _context.ReceiptEntries.FindAsync(id);
@@ -456,187 +470,230 @@ public class ReceiptEntryService : IReceiptEntryService
             return (false, "Error deleting entry: " + ex.Message);
         }
     }
+    #endregion
 
+    #region Lookups
     public async Task<IEnumerable<LookupItem>> GetAccountsAsync(string? searchTerm, int? paymentFromId = null, string? type = null)
     {
-        var rules = await _context.AccountRules
-            .Where(r => r.RuleType == "AllowedNature")
-            .ToListAsync();
-        
-        if (paymentFromId.HasValue)
+        try
         {
-             var profileRules = rules.Where(r => r.EntryAccountId == paymentFromId.Value).ToList();
-
-             var allowedSubGroupIds = profileRules
-                 .Where(r => r.AccountType == "SubGroupLedger" && CheckRule(r.Value, type))
-                 .Select(r => r.AccountId)
-                 .ToHashSet();
-
-             var allowedGrowerGroupIds = profileRules
-                 .Where(r => r.AccountType == "GrowerGroup" && CheckRule(r.Value, type))
-                 .Select(r => r.AccountId)
-                 .ToHashSet();
-
-             var allowedBankMasterIds = profileRules
-                 .Where(r => r.AccountType == "BankMaster" && CheckRule(r.Value, type))
-                 .Select(r => r.AccountId)
-                 .ToHashSet();
-
-             var allowedFarmerIds = profileRules
-                 .Where(r => r.AccountType == "Farmer" && CheckRule(r.Value, type))
-                 .Select(r => r.AccountId)
-                 .ToHashSet();
-
-             var bankMastersQuery = _context.BankMasters.Where(bm => bm.IsActive);
-             var farmersQuery = _context.Farmers.Where(f => f.IsActive);
-
-             if (!string.IsNullOrEmpty(searchTerm))
-             {
-                 bankMastersQuery = bankMastersQuery.Where(bm => bm.AccountName.Contains(searchTerm));
-                 farmersQuery = farmersQuery.Where(f => f.FarmerName.Contains(searchTerm));
-             }
-
-             var bankMasters = await bankMastersQuery
-                 .Where(bm => allowedBankMasterIds.Contains(bm.Id) || allowedSubGroupIds.Contains(bm.GroupId))
-                 .OrderBy(bm => bm.AccountName)
-                 .Take(50)
-                 .ToListAsync();
-
-             var farmers = await farmersQuery
-                 .Where(f => allowedFarmerIds.Contains(f.Id) || allowedGrowerGroupIds.Contains(f.GroupId))
-                 .OrderBy(f => f.FarmerName)
-                 .Take(50)
-                 .ToListAsync();
-
-             var allAccounts = new List<LookupItem>();
-             allAccounts.AddRange(bankMasters.Select(bm => new LookupItem { Id = bm.Id, Name = bm.AccountName, Type = "BankMaster" }));
-             allAccounts.AddRange(farmers.Select(f => new LookupItem { Id = f.Id, Name = f.FarmerName, Type = "Farmer" }));
-
-             return allAccounts.OrderBy(a => a.Name).Take(100).ToList();
-        }
-
-        string? GetRuleValue(string accountType, int accountId, int? entryId)
-        {
-            if (entryId.HasValue)
+            var rules = await _context.AccountRules
+                .Where(r => r.RuleType == "AllowedNature")
+                .ToListAsync();
+            
+            if (paymentFromId.HasValue)
             {
-                var specificRule = rules.FirstOrDefault(r => r.AccountType == accountType && r.AccountId == accountId && r.EntryAccountId == entryId);
-                if (specificRule != null) return specificRule.Value;
+                 var profileRules = rules.Where(r => r.EntryAccountId == paymentFromId.Value).ToList();
+
+                 var allowedSubGroupIds = profileRules
+                     .Where(r => r.AccountType == "SubGroupLedger" && CheckRule(r.Value, type))
+                     .Select(r => r.AccountId)
+                     .ToHashSet();
+
+                 var allowedGrowerGroupIds = profileRules
+                     .Where(r => r.AccountType == "GrowerGroup" && CheckRule(r.Value, type))
+                     .Select(r => r.AccountId)
+                     .ToHashSet();
+
+                 var allowedBankMasterIds = profileRules
+                     .Where(r => r.AccountType == "BankMaster" && CheckRule(r.Value, type))
+                     .Select(r => r.AccountId)
+                     .ToHashSet();
+
+                 var allowedFarmerIds = profileRules
+                     .Where(r => r.AccountType == "Farmer" && CheckRule(r.Value, type))
+                     .Select(r => r.AccountId)
+                     .ToHashSet();
+
+                 var bankMastersQuery = _context.BankMasters.Where(bm => bm.IsActive);
+                 var farmersQuery = _context.Farmers.Where(f => f.IsActive);
+
+                 if (!string.IsNullOrEmpty(searchTerm))
+                 {
+                     bankMastersQuery = bankMastersQuery.Where(bm => bm.AccountName.Contains(searchTerm));
+                     farmersQuery = farmersQuery.Where(f => f.FarmerName.Contains(searchTerm));
+                 }
+
+                 var bankMasters = await bankMastersQuery
+                     .Where(bm => allowedBankMasterIds.Contains(bm.Id) || allowedSubGroupIds.Contains(bm.GroupId))
+                     .OrderBy(bm => bm.AccountName)
+                     .Take(50)
+                     .ToListAsync();
+
+                 var farmers = await farmersQuery
+                     .Where(f => allowedFarmerIds.Contains(f.Id) || allowedGrowerGroupIds.Contains(f.GroupId))
+                     .OrderBy(f => f.FarmerName)
+                     .Take(50)
+                     .ToListAsync();
+
+                 var allAccounts = new List<LookupItem>();
+                 allAccounts.AddRange(bankMasters.Select(bm => new LookupItem { Id = bm.Id, Name = bm.AccountName, Type = "BankMaster" }));
+                 allAccounts.AddRange(farmers.Select(f => new LookupItem { Id = f.Id, Name = f.FarmerName, Type = "Farmer" }));
+
+                 return allAccounts.OrderBy(a => a.Name).Take(100).ToList();
             }
-            var defaultRule = rules.FirstOrDefault(r => r.AccountType == accountType && r.AccountId == accountId && r.EntryAccountId == null);
-            if (defaultRule != null) return defaultRule.Value;
-            return null; 
-        }
 
-        bool IsAllowed(string accountType, int accountId, string? fallbackType = null, int? fallbackId = null)
-        {
-             string? ruleValue = GetRuleValue(accountType, accountId, paymentFromId);
-             if (ruleValue != null) return CheckRule(ruleValue, type);
+            string? GetRuleValue(string accountType, int accountId, int? entryId)
+            {
+                if (entryId.HasValue)
+                {
+                    var specificRule = rules.FirstOrDefault(r => r.AccountType == accountType && r.AccountId == accountId && r.EntryAccountId == entryId);
+                    if (specificRule != null) return specificRule.Value;
+                }
+                var defaultRule = rules.FirstOrDefault(r => r.AccountType == accountType && r.AccountId == accountId && r.EntryAccountId == null);
+                if (defaultRule != null) return defaultRule.Value;
+                return null; 
+            }
 
-             if (fallbackType != null && fallbackId.HasValue)
-             {
-                 string? fallbackRuleValue = GetRuleValue(fallbackType, fallbackId.Value, paymentFromId);
-                 if (fallbackRuleValue != null) return CheckRule(fallbackRuleValue, type);
-             }
-             return true; 
-        }
+            bool IsAllowed(string accountType, int accountId, string? fallbackType = null, int? fallbackId = null)
+            {
+                 string? ruleValue = GetRuleValue(accountType, accountId, paymentFromId);
+                 if (ruleValue != null) return CheckRule(ruleValue, type);
 
-        bool CheckRule(string ruleValue, string? filterType)
-        {
-            if (string.IsNullOrWhiteSpace(ruleValue)) return false;
-            if (ruleValue.Equals("Both", StringComparison.OrdinalIgnoreCase)) return true;
-            if (ruleValue.Equals("Cancel", StringComparison.OrdinalIgnoreCase)) return false;
-            if (string.IsNullOrWhiteSpace(filterType)) return true; 
+                 if (fallbackType != null && fallbackId.HasValue)
+                 {
+                     string? fallbackRuleValue = GetRuleValue(fallbackType, fallbackId.Value, paymentFromId);
+                     if (fallbackRuleValue != null) return CheckRule(fallbackRuleValue, type);
+                 }
+                 return true; 
+            }
 
-            if (ruleValue.Equals("Debit", StringComparison.OrdinalIgnoreCase) && filterType.Equals("Debit", StringComparison.OrdinalIgnoreCase)) return true;
-            if (ruleValue.Equals("Credit", StringComparison.OrdinalIgnoreCase) && filterType.Equals("Credit", StringComparison.OrdinalIgnoreCase)) return true;
+            bool CheckRule(string ruleValue, string? filterType)
+            {
+                if (string.IsNullOrWhiteSpace(ruleValue)) return false;
+                if (ruleValue.Equals("Both", StringComparison.OrdinalIgnoreCase)) return true;
+                if (ruleValue.Equals("Cancel", StringComparison.OrdinalIgnoreCase)) return false;
+                if (string.IsNullOrWhiteSpace(filterType)) return true; 
+
+                if (ruleValue.Equals("Debit", StringComparison.OrdinalIgnoreCase) && filterType.Equals("Debit", StringComparison.OrdinalIgnoreCase)) return true;
+                if (ruleValue.Equals("Credit", StringComparison.OrdinalIgnoreCase) && filterType.Equals("Credit", StringComparison.OrdinalIgnoreCase)) return true;
+                
+                return false;
+            }
+
+            var globalBankMastersQuery = _context.BankMasters.Where(bm => bm.IsActive);
+            var globalFarmersQuery = _context.Farmers.Where(f => f.IsActive);
+
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                globalBankMastersQuery = globalBankMastersQuery.Where(bm => bm.AccountName.Contains(searchTerm));
+                globalFarmersQuery = globalFarmersQuery.Where(f => f.FarmerName.Contains(searchTerm));
+            }
+
+            var globalBankMasters = await globalBankMastersQuery.OrderBy(bm => bm.AccountName).Take(50).ToListAsync();
+            var globalFarmers = await globalFarmersQuery.OrderBy(f => f.FarmerName).Take(50).ToListAsync();
+
+            var globalAccounts = new List<LookupItem>();
             
-            return false;
+            globalAccounts.AddRange(globalBankMasters
+                .Where(bm => IsAllowed("BankMaster", bm.Id, "SubGroupLedger", bm.GroupId))
+                .Select(bm => new LookupItem { Id = bm.Id, Name = bm.AccountName, Type = "BankMaster" }));
+                
+            globalAccounts.AddRange(globalFarmers
+                .Where(f => IsAllowed("Farmer", f.Id, "GrowerGroup", f.GroupId))
+                .Select(f => new LookupItem { Id = f.Id, Name = f.FarmerName, Type = "Farmer" }));
+
+            return globalAccounts.OrderBy(a => a.Name).Take(100).ToList();
         }
-
-        var globalBankMastersQuery = _context.BankMasters.Where(bm => bm.IsActive);
-        var globalFarmersQuery = _context.Farmers.Where(f => f.IsActive);
-
-        if (!string.IsNullOrEmpty(searchTerm))
+        catch (Exception)
         {
-            globalBankMastersQuery = globalBankMastersQuery.Where(bm => bm.AccountName.Contains(searchTerm));
-            globalFarmersQuery = globalFarmersQuery.Where(f => f.FarmerName.Contains(searchTerm));
+            throw;
         }
-
-        var globalBankMasters = await globalBankMastersQuery.OrderBy(bm => bm.AccountName).Take(50).ToListAsync();
-        var globalFarmers = await globalFarmersQuery.OrderBy(f => f.FarmerName).Take(50).ToListAsync();
-
-        var globalAccounts = new List<LookupItem>();
-        
-        globalAccounts.AddRange(globalBankMasters
-            .Where(bm => IsAllowed("BankMaster", bm.Id, "SubGroupLedger", bm.GroupId))
-            .Select(bm => new LookupItem { Id = bm.Id, Name = bm.AccountName, Type = "BankMaster" }));
-            
-        globalAccounts.AddRange(globalFarmers
-            .Where(f => IsAllowed("Farmer", f.Id, "GrowerGroup", f.GroupId))
-            .Select(f => new LookupItem { Id = f.Id, Name = f.FarmerName, Type = "Farmer" }));
-
-        return globalAccounts.OrderBy(a => a.Name).Take(100).ToList();
     }
 
     public async Task<IEnumerable<LookupItem>> GetEntryProfilesAsync()
     {
-        return await _context.EntryForAccounts
-            .Where(e => e.TransactionType == "ReceiptEntry")
-            .OrderBy(e => e.AccountName)
-            .Select(e => new LookupItem { Id = e.Id, Name = e.AccountName })
-            .ToListAsync();
+        try
+        {
+            return await _context.EntryForAccounts
+                .Where(e => e.TransactionType == "ReceiptEntry")
+                .OrderBy(e => e.AccountName)
+                .Select(e => new LookupItem { Id = e.Id, Name = e.AccountName })
+                .ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
+    #endregion
 
+    #region Helpers
     public Task LoadDropdownsAsync(dynamic viewBag)
     {
-        var typeList = new List<SelectListItem>
+        try
         {
-            new SelectListItem { Value = "Credit", Text = "Credit" },
-            new SelectListItem { Value = "Debit", Text = "Debit" }
-        };
-        viewBag.TypeList = new SelectList(typeList, "Value", "Text");
-
-        var paymentTypeList = new List<SelectListItem>
-        {
-            new SelectListItem { Value = "Mobile Pay", Text = "Mobile Pay" },
-            new SelectListItem { Value = "Cash", Text = "Cash" },
-            new SelectListItem { Value = "Cheque", Text = "Cheque" },
-            new SelectListItem { Value = "UTR", Text = "UTR" },
-            new SelectListItem { Value = "NEFT", Text = "NEFT" },
-            new SelectListItem { Value = "RTGS", Text = "RTGS" }
-        };
-        viewBag.PaymentTypeList = new SelectList(paymentTypeList, "Value", "Text");
-
-        viewBag.Units = new List<string> { "Unit 1", "Unit 2" };
-
-        var entryAccounts = _context.EntryForAccounts
-            .Where(e => e.TransactionType == "ReceiptEntry")
-            .OrderBy(e => e.AccountName)
-            .Select(e => new SelectListItem
+            var typeList = new List<SelectListItem>
             {
-                Value = e.Id.ToString(),
-                Text = e.AccountName
-            })
-            .ToList();
-        viewBag.EntryProfiles = new SelectList(entryAccounts, "Value", "Text");
-        
-        return Task.CompletedTask;
+                new SelectListItem { Value = "Credit", Text = "Credit" },
+                new SelectListItem { Value = "Debit", Text = "Debit" }
+            };
+            viewBag.TypeList = new SelectList(typeList, "Value", "Text");
+
+            var paymentTypeList = new List<SelectListItem>
+            {
+                new SelectListItem { Value = "Mobile Pay", Text = "Mobile Pay" },
+                new SelectListItem { Value = "Cash", Text = "Cash" },
+                new SelectListItem { Value = "Cheque", Text = "Cheque" },
+                new SelectListItem { Value = "UTR", Text = "UTR" },
+                new SelectListItem { Value = "NEFT", Text = "NEFT" },
+                new SelectListItem { Value = "RTGS", Text = "RTGS" }
+            };
+            viewBag.PaymentTypeList = new SelectList(paymentTypeList, "Value", "Text");
+
+            viewBag.Units = new List<string> { "Unit 1", "Unit 2" };
+
+            var entryAccounts = _context.EntryForAccounts
+                .Where(e => e.TransactionType == "ReceiptEntry")
+                .OrderBy(e => e.AccountName)
+                .Select(e => new SelectListItem
+                {
+                    Value = e.Id.ToString(),
+                    Text = e.AccountName
+                })
+                .ToList();
+            viewBag.EntryProfiles = new SelectList(entryAccounts, "Value", "Text");
+            
+            return Task.CompletedTask;
+        }
+        catch (Exception)
+        {
+             throw;
+        }
     }
+    #endregion
+    #region Specific Retrieval
     public async Task<ReceiptEntry?> GetReceiptEntryByIdAsync(int id)
     {
-        return await _context.ReceiptEntries
-            .FirstOrDefaultAsync(r => r.Id == id && r.IsActive);
+        try
+        {
+            return await _context.ReceiptEntries
+                .FirstOrDefaultAsync(r => r.Id == id && r.IsActive);
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<List<ReceiptEntry>> GetReceiptEntriesByVoucherNoAsync(string voucherNo)
     {
-        return await _context.ReceiptEntries
-            .Where(r => r.VoucherNo == voucherNo && r.IsActive)
-            .ToListAsync();
+        try
+        {
+            return await _context.ReceiptEntries
+                .Where(r => r.VoucherNo == voucherNo && r.IsActive)
+                .ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
+    #endregion
 
 
 
+    #region Updates
     public async Task<(bool success, string message)> UpdateReceiptEntryAsync(ReceiptEntry model)
     {
         try
@@ -704,158 +761,178 @@ public class ReceiptEntryService : IReceiptEntryService
             return (false, "Error unapproving entry: " + ex.Message);
         }
     }
+    #endregion
 
+    #region Helpers II
     public async Task<string> GetAccountNameAsync(int accountId, string accountType)
     {
-        if (string.IsNullOrEmpty(accountType)) return "";
+        try
+        {
+            if (string.IsNullOrEmpty(accountType)) return "";
 
-        if (string.Equals(accountType, "BankMaster", StringComparison.OrdinalIgnoreCase))
-        {
-            var bank = await _context.BankMasters.FindAsync(accountId);
-            return bank?.AccountName ?? "";
-        }
-        else if (string.Equals(accountType, "MasterGroup", StringComparison.OrdinalIgnoreCase))
-        {
-            var group = await _context.MasterGroups.FindAsync(accountId);
-            return group?.Name ?? "";
-        }
-        else if (string.Equals(accountType, "MasterSubGroup", StringComparison.OrdinalIgnoreCase))
-        {
-            var subGroup = await _context.MasterSubGroups
-                .Include(msg => msg.MasterGroup)
-                .FirstOrDefaultAsync(msg => msg.Id == accountId);
-            return subGroup != null ? $"{subGroup.MasterGroup?.Name ?? ""} - {subGroup.Name}" : "";
-        }
-        else if (string.Equals(accountType, "SubGroupLedger", StringComparison.OrdinalIgnoreCase))
-        {
-            var ledger = await _context.SubGroupLedgers
-                .Include(sgl => sgl.MasterGroup)
-                .Include(sgl => sgl.MasterSubGroup)
-                .FirstOrDefaultAsync(sgl => sgl.Id == accountId);
-            return ledger != null ? $"{ledger.MasterGroup?.Name ?? ""} - {ledger.MasterSubGroup?.Name ?? ""} - {ledger.Name}" : "";
-        }
-        else if (string.Equals(accountType, "Farmer", StringComparison.OrdinalIgnoreCase))
-        {
-            var farmer = await _context.Farmers.FindAsync(accountId);
-            return farmer?.FarmerName ?? "";
-        }
+            if (string.Equals(accountType, "BankMaster", StringComparison.OrdinalIgnoreCase))
+            {
+                var bank = await _context.BankMasters.FindAsync(accountId);
+                return bank?.AccountName ?? "";
+            }
+            else if (string.Equals(accountType, "MasterGroup", StringComparison.OrdinalIgnoreCase))
+            {
+                var group = await _context.MasterGroups.FindAsync(accountId);
+                return group?.Name ?? "";
+            }
+            else if (string.Equals(accountType, "MasterSubGroup", StringComparison.OrdinalIgnoreCase))
+            {
+                var subGroup = await _context.MasterSubGroups
+                    .Include(msg => msg.MasterGroup)
+                    .FirstOrDefaultAsync(msg => msg.Id == accountId);
+                return subGroup != null ? $"{subGroup.MasterGroup?.Name ?? ""} - {subGroup.Name}" : "";
+            }
+            else if (string.Equals(accountType, "SubGroupLedger", StringComparison.OrdinalIgnoreCase))
+            {
+                var ledger = await _context.SubGroupLedgers
+                    .Include(sgl => sgl.MasterGroup)
+                    .Include(sgl => sgl.MasterSubGroup)
+                    .FirstOrDefaultAsync(sgl => sgl.Id == accountId);
+                return ledger != null ? $"{ledger.MasterGroup?.Name ?? ""} - {ledger.MasterSubGroup?.Name ?? ""} - {ledger.Name}" : "";
+            }
+            else if (string.Equals(accountType, "Farmer", StringComparison.OrdinalIgnoreCase))
+            {
+                var farmer = await _context.Farmers.FindAsync(accountId);
+                return farmer?.FarmerName ?? "";
+            }
 
-        return "";
+            return "";
+        }
+        catch (Exception)
+        {
+             throw;
+        }
     }
+    #endregion
 
+    #region Updates II
     public async Task<(bool success, string message)> UpdateReceiptVoucherAsync(string voucherNo, ReceiptEntryBatchModel model)
     {
-        if (model == null || model.Entries == null || model.Entries.Count == 0)
+        try
         {
-            return (false, "No entries to save.");
-        }
-
-        var currentUser = GetCurrentUsername();
-
-        var strategy = _context.Database.CreateExecutionStrategy();
-
-        return await strategy.ExecuteAsync(async () =>
-        {
-            using var transaction = await _context.Database.BeginTransactionAsync();
-            try
+            if (model == null || model.Entries == null || model.Entries.Count == 0)
             {
-                // 1. Validate Balance
-                decimal totalDebit = model.Entries.Where(e => e.Type == "Debit").Sum(e => e.Amount);
-                decimal totalCredit = model.Entries.Where(e => e.Type == "Credit").Sum(e => e.Amount);
+                return (false, "No entries to save.");
+            }
 
-                if (Math.Abs(totalDebit - totalCredit) >= 0.01m)
-                {
-                    return (false, $"Entry is not balanced. Total Debit ({totalDebit:F2}) must be equal to Total Credit ({totalCredit:F2}). Difference: {Math.Abs(totalDebit - totalCredit):F2}");
-                }
+            var currentUser = GetCurrentUsername();
 
-                // 2. Validate Payment Type and Ref No for multi-entry transactions
-                if (model.Entries.Count > 1)
-                {
-                    var firstPaymentType = model.Entries.First().PaymentType;
-                    var firstRefNo = model.Entries.First().RefNoChequeUTR ?? "";
+            var strategy = _context.Database.CreateExecutionStrategy();
 
-                    if (model.Entries.Any(e => e.PaymentType != firstPaymentType || (e.RefNoChequeUTR ?? "") != firstRefNo))
-                    {
-                        return (false, "PAYMENT TYPES OR REF. NO'S NOT MATCHED FOR ALL ENTRIES");
-                    }
-                }
-
-                // 3. Delete existing active entries for this VoucherNo
-                var existingEntries = await _context.ReceiptEntries
-                    .Where(r => r.VoucherNo == voucherNo)
-                    .ToListAsync();
-
-                if (!existingEntries.Any())
-                {
-                    return (false, "Receipt Entry not found.");
-                }
-
-                // Capture old state for history
-                var oldState = new {
-                    ReceiptDate = existingEntries.First().ReceiptDate,
-                    MobileNo = existingEntries.First().MobileNo,
-                    Entries = existingEntries.Select(e => new {
-                        e.Type, e.AccountId, e.AccountType, e.Amount, e.PaymentType, e.RefNoChequeUTR, e.Narration, e.PaymentFromSubGroupId
-                    }).ToList()
-                };
-
-                // Capture existing Unit to preserve it if not provided
-                var existingUnit = existingEntries.First().Unit;
-
-                _context.ReceiptEntries.RemoveRange(existingEntries);
-                await _context.SaveChangesAsync();
-
-                // 4. Create new entries (preserving VoucherNo)
-                foreach (var entryData in model.Entries)
-                {
-                    var receiptEntry = new ReceiptEntry
-                    {
-                        VoucherNo = voucherNo,
-                        ReceiptDate = model.ReceiptDate,
-                        MobileNo = model.MobileNo,
-                        Type = entryData.Type,
-                        AccountId = entryData.AccountId,
-                        AccountType = entryData.AccountType,
-                        PaymentType = entryData.PaymentType,
-                        Amount = entryData.Amount,
-                        RefNoChequeUTR = entryData.RefNoChequeUTR,
-                        Narration = entryData.Narration,
-                        Status = existingEntries.FirstOrDefault()?.Status ?? "Unapproved",
-                        CreatedAt = DateTime.Now,
-                        CreatedBy = currentUser,
-                        IsActive = true,
-                        PaymentFromSubGroupId = entryData.PaymentFromSubGroupId,
-                        Unit = entryData.Unit ?? existingUnit, // Preserve Unit
-                        EntryAccountId = entryData.EntryAccountId,
-                        EntryForId = entryData.EntryForId,
-                        EntryForName = entryData.EntryForName
-                    };
-
-                    _context.ReceiptEntries.Add(receiptEntry);
-                }
-
-                await _context.SaveChangesAsync();
-
-                // History Logging
+            return await strategy.ExecuteAsync(async () =>
+            {
+                using var transaction = await _context.Database.BeginTransactionAsync();
                 try
                 {
-                    await _transactionService.LogTransactionHistoryAsync(
-                        voucherNo, "Receipt", "Edit", currentUser, 
-                        remarks: "Voucher Updated",
-                        oldValues: JsonSerializer.Serialize(oldState),
-                        newValues: JsonSerializer.Serialize(model));
-                }
-                catch { /* Ignore logging errors */ }
-                await transaction.CommitAsync();
+                    // 1. Validate Balance
+                    decimal totalDebit = model.Entries.Where(e => e.Type == "Debit").Sum(e => e.Amount);
+                    decimal totalCredit = model.Entries.Where(e => e.Type == "Credit").Sum(e => e.Amount);
 
-                return (true, "Receipt Entry updated successfully!");
-            }
-            catch (Exception ex)
-            {
-                await transaction.RollbackAsync();
-                return (false, "Error updating voucher: " + ex.Message);
-            }
-        });
+                    if (Math.Abs(totalDebit - totalCredit) >= 0.01m)
+                    {
+                        return (false, $"Entry is not balanced. Total Debit ({totalDebit:F2}) must be equal to Total Credit ({totalCredit:F2}). Difference: {Math.Abs(totalDebit - totalCredit):F2}");
+                    }
+
+                    // 2. Validate Payment Type and Ref No for multi-entry transactions
+                    if (model.Entries.Count > 1)
+                    {
+                        var firstPaymentType = model.Entries.First().PaymentType;
+                        var firstRefNo = model.Entries.First().RefNoChequeUTR ?? "";
+
+                        if (model.Entries.Any(e => e.PaymentType != firstPaymentType || (e.RefNoChequeUTR ?? "") != firstRefNo))
+                        {
+                            return (false, "PAYMENT TYPES OR REF. NO'S NOT MATCHED FOR ALL ENTRIES");
+                        }
+                    }
+
+                    // 3. Delete existing active entries for this VoucherNo
+                    var existingEntries = await _context.ReceiptEntries
+                        .Where(r => r.VoucherNo == voucherNo)
+                        .ToListAsync();
+
+                    if (!existingEntries.Any())
+                    {
+                        return (false, "Receipt Entry not found.");
+                    }
+
+                    // Capture old state for history
+                    var oldState = new {
+                        ReceiptDate = existingEntries.First().ReceiptDate,
+                        MobileNo = existingEntries.First().MobileNo,
+                        Entries = existingEntries.Select(e => new {
+                            e.Type, e.AccountId, e.AccountType, e.Amount, e.PaymentType, e.RefNoChequeUTR, e.Narration, e.PaymentFromSubGroupId
+                        }).ToList()
+                    };
+                    
+                    var firstEntryCreatedAt = existingEntries.OrderBy(e => e.CreatedAt).First().CreatedAt;
+                    var existingUnit = existingEntries.First().Unit;
+
+                    _context.ReceiptEntries.RemoveRange(existingEntries);
+                    await _context.SaveChangesAsync();
+
+                    // 4. Create new entries
+                    foreach (var entryData in model.Entries)
+                    {
+                        var receiptEntry = new ReceiptEntry
+                        {
+                            VoucherNo = voucherNo,
+                            ReceiptDate = model.ReceiptDate,
+                            MobileNo = model.MobileNo,
+                            Type = entryData.Type,
+                            AccountId = entryData.AccountId,
+                            AccountType = entryData.AccountType,
+                            PaymentType = entryData.PaymentType,
+                            Amount = entryData.Amount,
+                            RefNoChequeUTR = entryData.RefNoChequeUTR,
+                            Narration = entryData.Narration,
+                            Status = existingEntries.FirstOrDefault()?.Status ?? "Unapproved",
+                            CreatedAt = firstEntryCreatedAt, // Preserve
+                            UpdatedAt = DateTime.Now,
+                            UpdatedBy = currentUser,
+                            IsActive = true,
+                            PaymentFromSubGroupId = entryData.PaymentFromSubGroupId,
+                            Unit = entryData.Unit ?? existingUnit, // Preserve Unit
+                            EntryAccountId = entryData.EntryAccountId,
+                            EntryForId = entryData.EntryForId,
+                            EntryForName = entryData.EntryForName
+                        };
+
+                        _context.ReceiptEntries.Add(receiptEntry);
+                    }
+
+                    await _context.SaveChangesAsync();
+
+                    // History Logging
+                    try
+                    {
+                        await _transactionService.LogTransactionHistoryAsync(
+                            voucherNo, "Receipt", "Edit", currentUser, 
+                            remarks: "Voucher Updated",
+                            oldValues: JsonSerializer.Serialize(oldState),
+                            newValues: JsonSerializer.Serialize(model));
+                    }
+                    catch { /* Ignore */ }
+
+                    await transaction.CommitAsync();
+
+                    return (true, "Receipt Voucher updated successfully!");
+                }
+                catch (Exception ex)
+                {
+                    await transaction.RollbackAsync();
+                    return (false, "An error occurred while updating: " + ex.Message);
+                }
+            });
+        }
+         catch (Exception ex)
+        {
+            return (false, "Error: " + ex.Message);
+        }
     }
 
     public async Task<(bool success, string message)> ApproveReceiptEntryAsync(int id)
@@ -900,15 +977,25 @@ public class ReceiptEntryService : IReceiptEntryService
             return (false, "Error approving entry: " + ex.Message);
         }
     }
+    #endregion
 
+    #region Misc
     public async Task<List<string>> GetUnitNamesAsync()
     {
-        return await _context.UnitMasters
-            .OrderBy(u => u.UnitName)
-            .Select(u => u.UnitName ?? "")
-            .Where(u => !string.IsNullOrEmpty(u))
-            .Distinct()
-            .ToListAsync();
+        try
+        {
+            return await _context.UnitMasters
+                .OrderBy(u => u.UnitName)
+                .Select(u => u.UnitName ?? "")
+                .Where(u => !string.IsNullOrEmpty(u))
+                .Distinct()
+                .ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
+    #endregion
 }
 

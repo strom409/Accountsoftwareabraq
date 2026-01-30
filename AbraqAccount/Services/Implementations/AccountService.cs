@@ -14,29 +14,45 @@ public class AccountService : IAccountService
         _context = context;
     }
 
+    #region Authentication
     public async Task<User?> AuthenticateUserAsync(string username, string password)
     {
-        var user = await _context.Users
-            .FirstOrDefaultAsync(u => u.Username == username);
-
-        if (user == null)
+        try
         {
-            return null;
-        }
+            var user = await _context.Users
+                .FirstOrDefaultAsync(u => u.Username == username);
 
-        // Verify password (plain text comparison for now)
-        // For production, use proper password hashing (BCrypt, PBKDF2, etc.)
-        if (user.Password != password)
+            if (user == null)
+            {
+                return null;
+            }
+
+            // Verify password (plain text comparison for now)
+            // For production, use proper password hashing (BCrypt, PBKDF2, etc.)
+            if (user.Password != password)
+            {
+                return null;
+            }
+
+            return user;
+        }
+        catch (Exception)
         {
-            return null;
+            throw;
         }
-
-        return user;
     }
 
     public async Task<bool> UserExistsAsync(string username)
     {
-        return await _context.Users.AnyAsync(u => u.Username == username);
+        try
+        {
+            return await _context.Users.AnyAsync(u => u.Username == username);
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
+    #endregion
 }
 

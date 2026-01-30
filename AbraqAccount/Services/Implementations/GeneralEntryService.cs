@@ -40,6 +40,7 @@ public class GeneralEntryService : IGeneralEntryService
         }
     }
 
+    #region Retrieval
     public async Task<(List<GeneralEntry> entries, int totalCount, int totalPages)> GetGeneralEntriesAsync(
         string? voucherNo,
         DateTime? fromDate,
@@ -52,55 +53,62 @@ public class GeneralEntryService : IGeneralEntryService
         int page,
         int pageSize)
     {
-        var query = _context.GeneralEntries.Where(g => g.IsActive).AsQueryable();
-
-        if (!string.IsNullOrEmpty(unit) && unit != "ALL")
+        try
         {
-            query = query.Where(g => g.Unit == unit);
-        }
+            var query = _context.GeneralEntries.Where(g => g.IsActive).AsQueryable();
 
-        if (!string.IsNullOrEmpty(voucherNo))
+            if (!string.IsNullOrEmpty(unit) && unit != "ALL")
+            {
+                query = query.Where(g => g.Unit == unit);
+            }
+
+            if (!string.IsNullOrEmpty(voucherNo))
+            {
+                query = query.Where(g => g.VoucherNo.Contains(voucherNo));
+            }
+
+            if (fromDate.HasValue)
+            {
+                query = query.Where(g => g.EntryDate >= fromDate.Value);
+            }
+
+            if (toDate.HasValue)
+            {
+                query = query.Where(g => g.EntryDate <= toDate.Value);
+            }
+
+            if (!string.IsNullOrEmpty(type))
+            {
+                query = query.Where(g => g.Type == type);
+            }
+
+            if (!string.IsNullOrEmpty(status))
+            {
+                query = query.Where(g => g.Status == status);
+            }
+
+            var totalCount = await query.CountAsync();
+            var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+
+            var entries = await query
+                .OrderByDescending(g => g.CreatedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            // Load navigation properties manually
+            foreach (var entry in entries)
+            {
+                await LoadAccountNamesAsync(entry);
+
+            }
+
+            return (entries, totalCount, totalPages);
+        }
+        catch (Exception)
         {
-            query = query.Where(g => g.VoucherNo.Contains(voucherNo));
+            throw;
         }
-
-        if (fromDate.HasValue)
-        {
-            query = query.Where(g => g.EntryDate >= fromDate.Value);
-        }
-
-        if (toDate.HasValue)
-        {
-            query = query.Where(g => g.EntryDate <= toDate.Value);
-        }
-
-        if (!string.IsNullOrEmpty(type))
-        {
-            query = query.Where(g => g.Type == type);
-        }
-
-        if (!string.IsNullOrEmpty(status))
-        {
-            query = query.Where(g => g.Status == status);
-        }
-
-        var totalCount = await query.CountAsync();
-        var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
-
-        var entries = await query
-            .OrderByDescending(g => g.CreatedAt)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync();
-
-        // Load navigation properties manually
-        foreach (var entry in entries)
-        {
-            await LoadAccountNamesAsync(entry);
-
-        }
-
-        return (entries, totalCount, totalPages);
     }
 
     public async Task<(List<GeneralEntryGroupViewModel> groups, int totalCount, int totalPages)> GetJournalGroupsAsync(
@@ -112,89 +120,107 @@ public class GeneralEntryService : IGeneralEntryService
         int page,
         int pageSize)
     {
-        var query = _context.GeneralEntries.Where(g => g.IsActive).AsQueryable();
-
-        if (!string.IsNullOrEmpty(unit) && unit != "ALL") query = query.Where(g => g.Unit == unit);
-        if (!string.IsNullOrEmpty(noteNo)) query = query.Where(g => g.VoucherNo.Contains(noteNo));
-        if (!string.IsNullOrEmpty(status)) query = query.Where(g => g.Status == status);
-        if (fromDate.HasValue) query = query.Where(g => g.EntryDate >= fromDate.Value);
-        if (fromDate.HasValue) query = query.Where(g => g.EntryDate >= fromDate.Value);
-        if (toDate.HasValue) query = query.Where(g => g.EntryDate <= toDate.Value);
-
-        // Exclude 'Grower Book' entries (which start with GBK/) as they have their own tab
-        // VoucherType is NotMapped, so we must filter by VoucherNo pattern or other DB column
-        query = query.Where(g => !g.VoucherNo.StartsWith("GBK/"));
-
-        // Fetch all matching entries to group effectively (pagination is tricky with grouping, so filtering first is key)
-        var allEntries = await query.OrderByDescending(g => g.CreatedAt).ToListAsync();
-
-        var groupedEntries = allEntries
-            .GroupBy(g => g.VoucherNo)
-            .Select(g => new GeneralEntryGroupViewModel
-            {
-                VoucherNo = g.Key,
-                Date = g.First().EntryDate,
-                Entries = g.ToList(),
-                TotalDebit = g.Sum(e => e.Amount),
-                Status = g.First().Status,
-                Unit = g.First().Unit,
-                Id = g.First().Id
-            })
-            .ToList();
-
-        var totalCount = groupedEntries.Count;
-        var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
-
-        var pagedGroups = groupedEntries
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToList();
-
-        // Load account names
-        foreach (var group in pagedGroups)
+        try
         {
-            foreach (var entry in group.Entries)
+            var query = _context.GeneralEntries.Where(g => g.IsActive).AsQueryable();
+
+            if (!string.IsNullOrEmpty(unit) && unit != "ALL") query = query.Where(g => g.Unit == unit);
+            if (!string.IsNullOrEmpty(noteNo)) query = query.Where(g => g.VoucherNo.Contains(noteNo));
+            if (!string.IsNullOrEmpty(status)) query = query.Where(g => g.Status == status);
+            if (fromDate.HasValue) query = query.Where(g => g.EntryDate >= fromDate.Value);
+            if (fromDate.HasValue) query = query.Where(g => g.EntryDate >= fromDate.Value);
+            if (toDate.HasValue) query = query.Where(g => g.EntryDate <= toDate.Value);
+
+            // Exclude 'Grower Book' entries (which start with GBK/) as they have their own tab
+            // VoucherType is NotMapped, so we must filter by VoucherNo pattern or other DB column
+            query = query.Where(g => !g.VoucherNo.StartsWith("GBK/"));
+
+            // Fetch all matching entries to group effectively (pagination is tricky with grouping, so filtering first is key)
+            var allEntries = await query.OrderByDescending(g => g.CreatedAt).ToListAsync();
+
+            var groupedEntries = allEntries
+                .GroupBy(g => g.VoucherNo)
+                .Select(g => new GeneralEntryGroupViewModel
+                {
+                    VoucherNo = g.Key,
+                    Date = g.First().EntryDate,
+                    Entries = g.ToList(),
+                    TotalDebit = g.Sum(e => e.Amount),
+                    Status = g.First().Status,
+                    Unit = g.First().Unit,
+                    Id = g.First().Id
+                })
+                .ToList();
+
+            var totalCount = groupedEntries.Count;
+            var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+
+            var pagedGroups = groupedEntries
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
+
+            // Load account names
+            foreach (var group in pagedGroups)
             {
-                await LoadAccountDetailsAsync(entry);
-                await LoadAccountDetailsAsync(entry, isCredit: true);
+                foreach (var entry in group.Entries)
+                {
+                    await LoadAccountDetailsAsync(entry);
+                    await LoadAccountDetailsAsync(entry, isCredit: true);
+                }
             }
+
+            return (pagedGroups, totalCount, totalPages);
         }
-
-        return (pagedGroups, totalCount, totalPages);
+        catch (Exception)
+        {
+            throw;
+        }
     }
+    #endregion
 
+    #region Helpers
     private async Task LoadAccountDetailsAsync(GeneralEntry entry, bool isCredit = false)
     {
-        string type = isCredit ? entry.CreditAccountType : entry.DebitAccountType;
-        int id = isCredit ? entry.CreditAccountId : entry.DebitAccountId;
+        try
+        {
+            string type = isCredit ? entry.CreditAccountType : entry.DebitAccountType;
+            int id = isCredit ? entry.CreditAccountId : entry.DebitAccountId;
 
-        if (type == AccountTypes.MasterGroup)
-        {
-            var mg = await _context.MasterGroups.FindAsync(id);
-            if(isCredit) entry.CreditMasterGroup = mg; else entry.DebitMasterGroup = mg;
+            if (type == AccountTypes.MasterGroup)
+            {
+                var mg = await _context.MasterGroups.FindAsync(id);
+                if(isCredit) entry.CreditMasterGroup = mg; else entry.DebitMasterGroup = mg;
+            }
+            else if (type == AccountTypes.MasterSubGroup)
+            {
+                var msg = await _context.MasterSubGroups.Include(m => m.MasterGroup).FirstOrDefaultAsync(m => m.Id == id);
+                if(isCredit) entry.CreditMasterSubGroup = msg; else entry.DebitMasterSubGroup = msg;
+            }
+            else if (type == AccountTypes.SubGroupLedger)
+            {
+                var sgl = await _context.SubGroupLedgers.Include(s => s.MasterGroup).Include(s => s.MasterSubGroup).FirstOrDefaultAsync(s => s.Id == id);
+                 if(isCredit) entry.CreditSubGroupLedger = sgl; else entry.DebitSubGroupLedger = sgl;
+            }
+            else if (type == AccountTypes.BankMaster)
+            {
+                var bm = await _context.BankMasters.FindAsync(id);
+                if (isCredit) entry.CreditBankMasterInfo = bm; else entry.DebitBankMasterInfo = bm;
+            }
+            else if (type == AccountTypes.Farmer)
+            {
+                var farmer = await _context.Farmers.FindAsync(id);
+                if (isCredit) entry.CreditFarmer = farmer; else entry.DebitFarmer = farmer;
+            }
         }
-        else if (type == AccountTypes.MasterSubGroup)
+        catch (Exception)
         {
-            var msg = await _context.MasterSubGroups.Include(m => m.MasterGroup).FirstOrDefaultAsync(m => m.Id == id);
-            if(isCredit) entry.CreditMasterSubGroup = msg; else entry.DebitMasterSubGroup = msg;
-        }
-        else if (type == AccountTypes.SubGroupLedger)
-        {
-            var sgl = await _context.SubGroupLedgers.Include(s => s.MasterGroup).Include(s => s.MasterSubGroup).FirstOrDefaultAsync(s => s.Id == id);
-             if(isCredit) entry.CreditSubGroupLedger = sgl; else entry.DebitSubGroupLedger = sgl;
-        }
-        else if (type == AccountTypes.BankMaster)
-        {
-            var bm = await _context.BankMasters.FindAsync(id);
-            if (isCredit) entry.CreditBankMasterInfo = bm; else entry.DebitBankMasterInfo = bm;
-        }
-        else if (type == AccountTypes.Farmer)
-        {
-            var farmer = await _context.Farmers.FindAsync(id);
-            if (isCredit) entry.CreditFarmer = farmer; else entry.DebitFarmer = farmer;
+            throw;
         }
     }
+    #endregion
 
+    #region Management
     public async Task<(bool success, string message)> CreateGeneralEntryAsync(GeneralEntry generalEntry, IFormFile? imageFile)
     {
         try
@@ -626,230 +652,299 @@ public class GeneralEntryService : IGeneralEntryService
             return (false, "Error deleting entry: " + ex.Message);
         }
     }
+    #endregion
 
+    #region Specific Retrieval
     public async Task<GeneralEntry?> GetEntryByIdAsync(int id)
     {
-         var entry = await _context.GeneralEntries.FindAsync(id);
-         if (entry != null)
+         try
          {
-            await LoadAccountNamesAsync(entry);
+             var entry = await _context.GeneralEntries.FindAsync(id);
+             if (entry != null)
+             {
+                await LoadAccountNamesAsync(entry);
+             }
+             return entry;
          }
-         return entry;
+         catch (Exception)
+         {
+             throw;
+         }
     }
 
     public async Task<List<GeneralEntry>> GetVoucherEntriesAsync(string voucherNo)
     {
-        var entries = await _context.GeneralEntries
-            .Where(g => g.VoucherNo == voucherNo)
-            .OrderBy(g => g.CreatedAt)
-            .ToListAsync();
-            
-        foreach(var entry in entries)
+        try
         {
-            await LoadAccountNamesAsync(entry);
+            var entries = await _context.GeneralEntries
+                .Where(g => g.VoucherNo == voucherNo)
+                .OrderBy(g => g.CreatedAt)
+                .ToListAsync();
+                
+            foreach(var entry in entries)
+            {
+                await LoadAccountNamesAsync(entry);
+            }
+            return entries;
         }
-        return entries;
+        catch (Exception)
+        {
+            throw;
+        }
     }
+    #endregion
 
+    #region Lookups
     public async Task<IEnumerable<LookupItem>> GetAccountsAsync(string? searchTerm, int? paymentFromId = null, string? type = null)
     {
-        var rules = await _context.AccountRules
-            .Where(r => r.RuleType == "AllowedNature")
-            .ToListAsync();
-
-        string? GetRuleValue(string accountType, int accountId, int? entryId)
+        try
         {
-            if (entryId.HasValue)
+            var rules = await _context.AccountRules
+                .Where(r => r.RuleType == "AllowedNature")
+                .ToListAsync();
+
+            string? GetRuleValue(string accountType, int accountId, int? entryId)
             {
-                var specificRule = rules.FirstOrDefault(r => r.AccountType == accountType && r.AccountId == accountId && r.EntryAccountId == entryId);
-                if (specificRule != null) return specificRule.Value;
+                if (entryId.HasValue)
+                {
+                    var specificRule = rules.FirstOrDefault(r => r.AccountType == accountType && r.AccountId == accountId && r.EntryAccountId == entryId);
+                    if (specificRule != null) return specificRule.Value;
+                }
+                var defaultRule = rules.FirstOrDefault(r => r.AccountType == accountType && r.AccountId == accountId && r.EntryAccountId == null);
+                if (defaultRule != null) return defaultRule.Value;
+                return null;
             }
-            var defaultRule = rules.FirstOrDefault(r => r.AccountType == accountType && r.AccountId == accountId && r.EntryAccountId == null);
-            if (defaultRule != null) return defaultRule.Value;
-            return null;
-        }
 
-        bool IsAllowed(string accountType, int accountId, string? fallbackType = null, int? fallbackId = null)
-        {
-            string? ruleValue = GetRuleValue(accountType, accountId, paymentFromId);
-            if (ruleValue != null) return CheckRule(ruleValue, type);
-
-            if (fallbackType != null && fallbackId.HasValue)
+            bool IsAllowed(string accountType, int accountId, string? fallbackType = null, int? fallbackId = null)
             {
-                string? fallbackRuleValue = GetRuleValue(fallbackType, fallbackId.Value, paymentFromId);
-                if (fallbackRuleValue != null) return CheckRule(fallbackRuleValue, type);
+                string? ruleValue = GetRuleValue(accountType, accountId, paymentFromId);
+                if (ruleValue != null) return CheckRule(ruleValue, type);
+
+                if (fallbackType != null && fallbackId.HasValue)
+                {
+                    string? fallbackRuleValue = GetRuleValue(fallbackType, fallbackId.Value, paymentFromId);
+                    if (fallbackRuleValue != null) return CheckRule(fallbackRuleValue, type);
+                }
+                return true;
             }
-            return true;
-        }
 
-        bool CheckRule(string ruleValue, string? filterType)
-        {
-            if (string.IsNullOrWhiteSpace(ruleValue)) return false;
-            if (ruleValue.Equals("Both", StringComparison.OrdinalIgnoreCase)) return true;
-            if (ruleValue.Equals("Cancel", StringComparison.OrdinalIgnoreCase)) return false;
-            if (string.IsNullOrWhiteSpace(filterType)) return true;
+            bool CheckRule(string ruleValue, string? filterType)
+            {
+                if (string.IsNullOrWhiteSpace(ruleValue)) return false;
+                if (ruleValue.Equals("Both", StringComparison.OrdinalIgnoreCase)) return true;
+                if (ruleValue.Equals("Cancel", StringComparison.OrdinalIgnoreCase)) return false;
+                if (string.IsNullOrWhiteSpace(filterType)) return true;
 
-            if (ruleValue.Equals("Debit", StringComparison.OrdinalIgnoreCase) && filterType.Equals("Debit", StringComparison.OrdinalIgnoreCase)) return true;
-            if (ruleValue.Equals("Credit", StringComparison.OrdinalIgnoreCase) && filterType.Equals("Credit", StringComparison.OrdinalIgnoreCase)) return true;
+                if (ruleValue.Equals("Debit", StringComparison.OrdinalIgnoreCase) && filterType.Equals("Debit", StringComparison.OrdinalIgnoreCase)) return true;
+                if (ruleValue.Equals("Credit", StringComparison.OrdinalIgnoreCase) && filterType.Equals("Credit", StringComparison.OrdinalIgnoreCase)) return true;
 
-            return false;
-        }
+                return false;
+            }
 
-        if (paymentFromId.HasValue)
-        {
-            var profileRules = rules.Where(r => r.EntryAccountId == paymentFromId.Value).ToList();
+            if (paymentFromId.HasValue)
+            {
+                var profileRules = rules.Where(r => r.EntryAccountId == paymentFromId.Value).ToList();
 
-            var allowedSubGroupIds = profileRules
-                .Where(r => r.AccountType == "SubGroupLedger" && CheckRule(r.Value, type))
-                .Select(r => r.AccountId)
-                .ToHashSet();
+                var allowedSubGroupIds = profileRules
+                    .Where(r => r.AccountType == "SubGroupLedger" && CheckRule(r.Value, type))
+                    .Select(r => r.AccountId)
+                    .ToHashSet();
 
-            var allowedBankMasterIds = profileRules
-                .Where(r => r.AccountType == "BankMaster" && CheckRule(r.Value, type))
-                .Select(r => r.AccountId)
-                .ToHashSet();
+                var allowedBankMasterIds = profileRules
+                    .Where(r => r.AccountType == "BankMaster" && CheckRule(r.Value, type))
+                    .Select(r => r.AccountId)
+                    .ToHashSet();
 
-            var allowedFarmerIds = profileRules
-                .Where(r => r.AccountType == "Farmer" && CheckRule(r.Value, type))
-                .Select(r => r.AccountId)
-                .ToHashSet();
+                var allowedFarmerIds = profileRules
+                    .Where(r => r.AccountType == "Farmer" && CheckRule(r.Value, type))
+                    .Select(r => r.AccountId)
+                    .ToHashSet();
 
-            var bankMastersQuery = _context.BankMasters.Where(bm => bm.IsActive);
-            var farmersQuery = _context.Farmers.Where(f => f.IsActive);
+                var bankMastersQuery = _context.BankMasters.Where(bm => bm.IsActive);
+                var farmersQuery = _context.Farmers.Where(f => f.IsActive);
+
+                if (!string.IsNullOrEmpty(searchTerm))
+                {
+                    bankMastersQuery = bankMastersQuery.Where(bm => bm.AccountName.Contains(searchTerm));
+                    farmersQuery = farmersQuery.Where(f => f.FarmerName.Contains(searchTerm));
+                }
+
+                var bankMasters = await bankMastersQuery
+                    .Where(bm => allowedBankMasterIds.Contains(bm.Id) || allowedSubGroupIds.Contains(bm.GroupId))
+                    .OrderBy(bm => bm.AccountName)
+                    .Take(50)
+                    .ToListAsync();
+
+                var farmers = await farmersQuery
+                    .Where(f => allowedFarmerIds.Contains(f.Id))
+                    .OrderBy(f => f.FarmerName)
+                    .Take(50)
+                    .ToListAsync();
+
+                var allAccounts = new List<LookupItem>();
+                allAccounts.AddRange(bankMasters.Select(bm => new LookupItem { Id = bm.Id, Name = bm.AccountName, Type = "BankMaster" }));
+                allAccounts.AddRange(farmers.Select(f => new LookupItem { Id = f.Id, Name = f.FarmerName, Type = "Farmer" }));
+
+                return allAccounts.OrderBy(a => a.Name).Take(100).ToList();
+            }
+
+            var globalBankMastersQuery = _context.BankMasters.Where(bm => bm.IsActive);
+            var globalSubGroupLedgersQuery = _context.SubGroupLedgers.Where(s => s.IsActive);
+            var globalFarmersQuery = _context.Farmers.Where(f => f.IsActive);
 
             if (!string.IsNullOrEmpty(searchTerm))
             {
-                bankMastersQuery = bankMastersQuery.Where(bm => bm.AccountName.Contains(searchTerm));
-                farmersQuery = farmersQuery.Where(f => f.FarmerName.Contains(searchTerm));
+                globalBankMastersQuery = globalBankMastersQuery.Where(bm => bm.AccountName.Contains(searchTerm));
+                globalSubGroupLedgersQuery = globalSubGroupLedgersQuery.Where(s => s.Name.Contains(searchTerm));
+                globalFarmersQuery = globalFarmersQuery.Where(f => f.FarmerName.Contains(searchTerm));
             }
 
-            var bankMasters = await bankMastersQuery
-                .Where(bm => allowedBankMasterIds.Contains(bm.Id) || allowedSubGroupIds.Contains(bm.GroupId))
-                .OrderBy(bm => bm.AccountName)
-                .Take(50)
-                .ToListAsync();
+            var globalBankMasters = await globalBankMastersQuery.OrderBy(bm => bm.AccountName).Take(50).ToListAsync();
+            var globalSubGroupLedgers = await globalSubGroupLedgersQuery.OrderBy(s => s.Name).Take(50).ToListAsync();
+            var globalFarmers = await globalFarmersQuery.OrderBy(f => f.FarmerName).Take(50).ToListAsync();
 
-            var farmers = await farmersQuery
-                .Where(f => allowedFarmerIds.Contains(f.Id))
-                .OrderBy(f => f.FarmerName)
-                .Take(50)
-                .ToListAsync();
+            var globalAccounts = new List<LookupItem>();
+            globalAccounts.AddRange(globalBankMasters
+                .Where(bm => IsAllowed(AccountTypes.BankMaster, bm.Id, AccountTypes.SubGroupLedger, bm.GroupId))
+                .Select(bm => new LookupItem { Id = bm.Id, Name = bm.AccountName, Type = AccountTypes.BankMaster }));
+            globalAccounts.AddRange(globalSubGroupLedgers
+                .Where(sgl => IsAllowed(AccountTypes.SubGroupLedger, sgl.Id))
+                .Select(sgl => new LookupItem { Id = sgl.Id, Name = sgl.Name, Type = AccountTypes.SubGroupLedger }));
+            globalAccounts.AddRange(globalFarmers
+                .Where(f => IsAllowed(AccountTypes.Farmer, f.Id, AccountTypes.GrowerGroup, f.GroupId))
+                .Select(f => new LookupItem { Id = f.Id, Name = f.FarmerName, Type = AccountTypes.Farmer }));
 
-            var allAccounts = new List<LookupItem>();
-            allAccounts.AddRange(bankMasters.Select(bm => new LookupItem { Id = bm.Id, Name = bm.AccountName, Type = "BankMaster" }));
-            allAccounts.AddRange(farmers.Select(f => new LookupItem { Id = f.Id, Name = f.FarmerName, Type = "Farmer" }));
-
-            return allAccounts.OrderBy(a => a.Name).Take(100).ToList();
+            return globalAccounts.OrderBy(a => a.Name).Take(100).ToList();
         }
-
-        var globalBankMastersQuery = _context.BankMasters.Where(bm => bm.IsActive);
-        var globalSubGroupLedgersQuery = _context.SubGroupLedgers.Where(s => s.IsActive);
-        var globalFarmersQuery = _context.Farmers.Where(f => f.IsActive);
-
-        if (!string.IsNullOrEmpty(searchTerm))
+        catch (Exception)
         {
-            globalBankMastersQuery = globalBankMastersQuery.Where(bm => bm.AccountName.Contains(searchTerm));
-            globalSubGroupLedgersQuery = globalSubGroupLedgersQuery.Where(s => s.Name.Contains(searchTerm));
-            globalFarmersQuery = globalFarmersQuery.Where(f => f.FarmerName.Contains(searchTerm));
+            throw;
         }
-
-        var globalBankMasters = await globalBankMastersQuery.OrderBy(bm => bm.AccountName).Take(50).ToListAsync();
-        var globalSubGroupLedgers = await globalSubGroupLedgersQuery.OrderBy(s => s.Name).Take(50).ToListAsync();
-        var globalFarmers = await globalFarmersQuery.OrderBy(f => f.FarmerName).Take(50).ToListAsync();
-
-        var globalAccounts = new List<LookupItem>();
-        globalAccounts.AddRange(globalBankMasters
-            .Where(bm => IsAllowed(AccountTypes.BankMaster, bm.Id, AccountTypes.SubGroupLedger, bm.GroupId))
-            .Select(bm => new LookupItem { Id = bm.Id, Name = bm.AccountName, Type = AccountTypes.BankMaster }));
-        globalAccounts.AddRange(globalSubGroupLedgers
-            .Where(sgl => IsAllowed(AccountTypes.SubGroupLedger, sgl.Id))
-            .Select(sgl => new LookupItem { Id = sgl.Id, Name = sgl.Name, Type = AccountTypes.SubGroupLedger }));
-        globalAccounts.AddRange(globalFarmers
-            .Where(f => IsAllowed(AccountTypes.Farmer, f.Id, AccountTypes.GrowerGroup, f.GroupId))
-            .Select(f => new LookupItem { Id = f.Id, Name = f.FarmerName, Type = AccountTypes.Farmer }));
-
-        return globalAccounts.OrderBy(a => a.Name).Take(100).ToList();
     }
     
 
     public async Task<IEnumerable<object>> GetExpenseGroupsAsync(string? searchTerm)
     {
-        var query = _context.MasterGroups.AsQueryable();
-        
-        if (!string.IsNullOrEmpty(searchTerm))
+        try
         {
-            query = query.Where(mg => mg.Name.Contains(searchTerm));
+            var query = _context.MasterGroups.AsQueryable();
+            
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                query = query.Where(mg => mg.Name.Contains(searchTerm));
+            }
+            
+            return await query
+                .OrderBy(mg => mg.Name)
+                .Take(50)
+                .Select(mg => new { id = mg.Id, name = mg.Name })
+                .ToListAsync();
         }
-        
-        return await query
-            .OrderBy(mg => mg.Name)
-            .Take(50)
-            .Select(mg => new { id = mg.Id, name = mg.Name })
-            .ToListAsync();
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<IEnumerable<object>> GetExpenseSubGroupsAsync(int? groupId, string? searchTerm)
     {
-        var query = _context.MasterSubGroups
-            .Include(msg => msg.MasterGroup)
-            .Where(msg => msg.IsActive)
-            .AsQueryable();
-        
-        if (groupId.HasValue)
+        try
         {
-            query = query.Where(msg => msg.MasterGroupId == groupId.Value);
+            var query = _context.MasterSubGroups
+                .Include(msg => msg.MasterGroup)
+                .Where(msg => msg.IsActive)
+                .AsQueryable();
+            
+            if (groupId.HasValue)
+            {
+                query = query.Where(msg => msg.MasterGroupId == groupId.Value);
+            }
+            
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                query = query.Where(msg => 
+                    msg.Name.Contains(searchTerm) ||
+                    (msg.MasterGroup != null && msg.MasterGroup.Name.Contains(searchTerm)));
+            }
+            
+            return await query
+                .OrderBy(msg => msg.Name)
+                .Take(50)
+                .Select(msg => new { 
+                    id = msg.Id, 
+                    name = msg.MasterGroup != null ? $"{msg.MasterGroup.Name} - {msg.Name}" : msg.Name 
+                })
+                .ToListAsync();
         }
-        
-        if (!string.IsNullOrEmpty(searchTerm))
+        catch (Exception)
         {
-            query = query.Where(msg => 
-                msg.Name.Contains(searchTerm) ||
-                (msg.MasterGroup != null && msg.MasterGroup.Name.Contains(searchTerm)));
+            throw;
         }
-        
-        return await query
-            .OrderBy(msg => msg.Name)
-            .Take(50)
-            .Select(msg => new { 
-                id = msg.Id, 
-                name = msg.MasterGroup != null ? $"{msg.MasterGroup.Name} - {msg.Name}" : msg.Name 
-            })
-            .ToListAsync();
     }
 
     public async Task<IEnumerable<object>> GetVendorGroupsAsync(string? searchTerm)
     {
-        return await GetExpenseGroupsAsync(searchTerm);
+        try
+        {
+            return await GetExpenseGroupsAsync(searchTerm);
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
     
     public async Task<List<string>> GetUniqueTypesAsync()
     {
-        return await _context.GeneralEntries
-            .Where(g => !string.IsNullOrEmpty(g.Type))
-            .Select(g => g.Type)
-            .Distinct()
-            .OrderBy(t => t)
-            .ToListAsync();
+        try
+        {
+            return await _context.GeneralEntries
+                .Where(g => !string.IsNullOrEmpty(g.Type))
+                .Select(g => g.Type)
+                .Distinct()
+                .OrderBy(t => t)
+                .ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<IEnumerable<object>> GetSubGroupLedgersAsync()
     {
-        return await _context.SubGroupLedgers
-            .Where(s => s.IsActive)
-            .OrderBy(s => s.Name)
-            .Select(s => new { Id = s.Id, Name = s.Name })
-            .ToListAsync();
+        try
+        {
+             return await _context.SubGroupLedgers
+                .Where(s => s.IsActive)
+                .OrderBy(s => s.Name)
+                .Select(s => new { Id = s.Id, Name = s.Name })
+                .ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<IEnumerable<LookupItem>> GetEntryProfilesAsync(string transactionType)
     {
-        return await _context.EntryForAccounts
-            .Where(e => e.TransactionType == transactionType)
-            .OrderBy(e => e.AccountName)
-            .Select(e => new LookupItem { Id = e.Id, Name = e.AccountName })
-            .ToListAsync();
+        try
+        {
+            return await _context.EntryForAccounts
+                .Where(e => e.TransactionType == transactionType)
+                .OrderBy(e => e.AccountName)
+                .Select(e => new LookupItem { Id = e.Id, Name = e.AccountName })
+                .ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
+    #endregion
 
+    #region Updates
     public async Task<(bool success, string message)> AddTypeColumnAsync()
     {
         try
@@ -1066,533 +1161,591 @@ public class GeneralEntryService : IGeneralEntryService
             }
         });
     }
+    #endregion
 
+    #region Helpers II
     private async Task LoadAccountNamesAsync(GeneralEntry entry)
     {
-        // Load Debit Account
-        if (entry.DebitAccountType == AccountTypes.MasterGroup)
+        try
         {
-            entry.DebitMasterGroup = await _context.MasterGroups.FindAsync(entry.DebitAccountId);
-        }
-        else if (entry.DebitAccountType == AccountTypes.MasterSubGroup)
-        {
-            entry.DebitMasterSubGroup = await _context.MasterSubGroups
-                .Include(msg => msg.MasterGroup)
-                .FirstOrDefaultAsync(msg => msg.Id == entry.DebitAccountId);
-        }
-        else if (entry.DebitAccountType == AccountTypes.SubGroupLedger)
-        {
-            entry.DebitSubGroupLedger = await _context.SubGroupLedgers
-                .Include(sgl => sgl.MasterGroup)
-                .Include(sgl => sgl.MasterSubGroup)
-                .FirstOrDefaultAsync(sgl => sgl.Id == entry.DebitAccountId);
-        }
-        else if (entry.DebitAccountType == AccountTypes.BankMaster)
-        {
-            entry.DebitBankMasterInfo = await _context.BankMasters
-                .Include(b => b.Group)
-                .FirstOrDefaultAsync(b => b.Id == entry.DebitAccountId);
-        }
-        else if (entry.DebitAccountType == AccountTypes.Farmer)
-        {
-            entry.DebitFarmer = await _context.Farmers
-                .Include(f => f.GrowerGroup)
-                .FirstOrDefaultAsync(f => f.Id == entry.DebitAccountId);
-        }
-
-        // Load Credit Account
-        if (entry.CreditAccountType == AccountTypes.MasterGroup)
-        {
-            entry.CreditMasterGroup = await _context.MasterGroups.FindAsync(entry.CreditAccountId);
-        }
-        else if (entry.CreditAccountType == AccountTypes.MasterSubGroup)
-        {
-            entry.CreditMasterSubGroup = await _context.MasterSubGroups
-                .Include(msg => msg.MasterGroup)
-                .FirstOrDefaultAsync(msg => msg.Id == entry.CreditAccountId);
-        }
-        else if (entry.CreditAccountType == AccountTypes.SubGroupLedger)
-        {
-            entry.CreditSubGroupLedger = await _context.SubGroupLedgers
-                .Include(sgl => sgl.MasterGroup)
-                .Include(sgl => sgl.MasterSubGroup)
-                .FirstOrDefaultAsync(sgl => sgl.Id == entry.CreditAccountId);
-        }
-        else if (entry.CreditAccountType == AccountTypes.BankMaster)
-        {
-            entry.CreditBankMasterInfo = await _context.BankMasters
-                .Include(b => b.Group)
-                .FirstOrDefaultAsync(b => b.Id == entry.CreditAccountId);
-        }
-        else if (entry.CreditAccountType == AccountTypes.Farmer)
-        {
-             entry.CreditFarmer = await _context.Farmers
-                .Include(f => f.GrowerGroup)
-                .FirstOrDefaultAsync(f => f.Id == entry.CreditAccountId);
-        }
-
-        // Load EntryForName if missing
-    if (string.IsNullOrEmpty(entry.EntryForName))
-    {
-        int? profileId = entry.EntryForId ?? entry.EntryAccountId;
-        if (profileId.HasValue && profileId > 0)
-        {
-            var profile = await _context.EntryForAccounts.FindAsync(profileId.Value);
-            if (profile != null)
+            // Load Debit Account
+            if (entry.DebitAccountType == AccountTypes.MasterGroup)
             {
-                entry.EntryForName = profile.AccountName;
+                entry.DebitMasterGroup = await _context.MasterGroups.FindAsync(entry.DebitAccountId);
+            }
+            else if (entry.DebitAccountType == AccountTypes.MasterSubGroup)
+            {
+                entry.DebitMasterSubGroup = await _context.MasterSubGroups
+                    .Include(msg => msg.MasterGroup)
+                    .FirstOrDefaultAsync(msg => msg.Id == entry.DebitAccountId);
+            }
+            else if (entry.DebitAccountType == AccountTypes.SubGroupLedger)
+            {
+                entry.DebitSubGroupLedger = await _context.SubGroupLedgers
+                    .Include(sgl => sgl.MasterGroup)
+                    .Include(sgl => sgl.MasterSubGroup)
+                    .FirstOrDefaultAsync(sgl => sgl.Id == entry.DebitAccountId);
+            }
+            else if (entry.DebitAccountType == AccountTypes.BankMaster)
+            {
+                entry.DebitBankMasterInfo = await _context.BankMasters
+                    .Include(b => b.Group)
+                    .FirstOrDefaultAsync(b => b.Id == entry.DebitAccountId);
+            }
+            else if (entry.DebitAccountType == AccountTypes.Farmer)
+            {
+                entry.DebitFarmer = await _context.Farmers
+                    .Include(f => f.GrowerGroup)
+                    .FirstOrDefaultAsync(f => f.Id == entry.DebitAccountId);
+            }
+
+            // Load Credit Account
+            if (entry.CreditAccountType == AccountTypes.MasterGroup)
+            {
+                entry.CreditMasterGroup = await _context.MasterGroups.FindAsync(entry.CreditAccountId);
+            }
+            else if (entry.CreditAccountType == AccountTypes.MasterSubGroup)
+            {
+                entry.CreditMasterSubGroup = await _context.MasterSubGroups
+                    .Include(msg => msg.MasterGroup)
+                    .FirstOrDefaultAsync(msg => msg.Id == entry.CreditAccountId);
+            }
+            else if (entry.CreditAccountType == AccountTypes.SubGroupLedger)
+            {
+                entry.CreditSubGroupLedger = await _context.SubGroupLedgers
+                    .Include(sgl => sgl.MasterGroup)
+                    .Include(sgl => sgl.MasterSubGroup)
+                    .FirstOrDefaultAsync(sgl => sgl.Id == entry.CreditAccountId);
+            }
+            else if (entry.CreditAccountType == AccountTypes.BankMaster)
+            {
+                entry.CreditBankMasterInfo = await _context.BankMasters
+                    .Include(b => b.Group)
+                    .FirstOrDefaultAsync(b => b.Id == entry.CreditAccountId);
+            }
+            else if (entry.CreditAccountType == AccountTypes.Farmer)
+            {
+                 entry.CreditFarmer = await _context.Farmers
+                    .Include(f => f.GrowerGroup)
+                    .FirstOrDefaultAsync(f => f.Id == entry.CreditAccountId);
+            }
+
+            // Load EntryForName if missing
+            if (string.IsNullOrEmpty(entry.EntryForName))
+            {
+                int? profileId = entry.EntryForId ?? entry.EntryAccountId;
+                if (profileId.HasValue && profileId > 0)
+                {
+                    var profile = await _context.EntryForAccounts.FindAsync(profileId.Value);
+                    if (profile != null)
+                    {
+                        entry.EntryForName = profile.AccountName;
+                    }
+                }
             }
         }
+        catch (Exception)
+        {
+            throw;
+        }
     }
-    }
+    #endregion
 
 
+    #region Lookups II
     public async Task<IEnumerable<object>> GetSubGroupLedgersAsync(int? masterSubGroupId, string? searchTerm)
     {
-        var query = _context.SubGroupLedgers
-            .Include(sgl => sgl.MasterGroup)
-            .Include(sgl => sgl.MasterSubGroup)
-            .Where(sgl => sgl.IsActive)
-            .AsQueryable();
-
-        if (masterSubGroupId.HasValue)
+        try
         {
-            query = query.Where(sgl => sgl.MasterSubGroupId == masterSubGroupId.Value);
-        }
+            var query = _context.SubGroupLedgers
+                .Include(sgl => sgl.MasterGroup)
+                .Include(sgl => sgl.MasterSubGroup)
+                .Where(sgl => sgl.IsActive)
+                .AsQueryable();
 
-        if (!string.IsNullOrEmpty(searchTerm))
+            if (masterSubGroupId.HasValue)
+            {
+                query = query.Where(sgl => sgl.MasterSubGroupId == masterSubGroupId.Value);
+            }
+
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                query = query.Where(sgl => 
+                    sgl.Name.Contains(searchTerm) ||
+                    (sgl.MasterGroup != null && sgl.MasterGroup.Name.Contains(searchTerm)) ||
+                    (sgl.MasterSubGroup != null && sgl.MasterSubGroup.Name.Contains(searchTerm))
+                );
+            }
+
+            return await query
+                .OrderBy(sgl => sgl.Name)
+                .Take(50)
+                .Select(sgl => new { 
+                    id = sgl.Id, 
+                    name = sgl.Name // Just Name as per user request? Or including group? "Sub Group Ledger & Account".
+                    // User wants "Account" dropdown.
+                })
+                .ToListAsync();
+        }
+        catch (Exception)
         {
-            query = query.Where(sgl => 
-                sgl.Name.Contains(searchTerm) ||
-                (sgl.MasterGroup != null && sgl.MasterGroup.Name.Contains(searchTerm)) ||
-                (sgl.MasterSubGroup != null && sgl.MasterSubGroup.Name.Contains(searchTerm))
-            );
+            throw;
         }
-
-        return await query
-            .OrderBy(sgl => sgl.Name)
-            .Take(50)
-            .Select(sgl => new { 
-                id = sgl.Id, 
-                name = sgl.Name // Just Name as per user request? Or including group? "Sub Group Ledger & Account".
-                // User wants "Account" dropdown.
-            })
-            .ToListAsync();
     }
 
     public async Task<IEnumerable<object>> GetAccountsByGroupIdAsync(int groupId)
     {
-        // Fetch BankMaster accounts filtered by SubGroupLedger ID (GroupId)
-        var accounts = await _context.BankMasters
-            .Where(bm => bm.GroupId == groupId && bm.IsActive)
-            .OrderBy(bm => bm.AccountName)
-            .Select(bm => new { 
-                id = bm.Id, 
-                name = bm.AccountName,
-                type = AccountTypes.BankMaster
-            })
-            .ToListAsync();
-            
-        return accounts;
+        try
+        {
+            // Fetch BankMaster accounts filtered by SubGroupLedger ID (GroupId)
+            var accounts = await _context.BankMasters
+                .Where(bm => bm.GroupId == groupId && bm.IsActive)
+                .OrderBy(bm => bm.AccountName)
+                .Select(bm => new { 
+                    id = bm.Id, 
+                    name = bm.AccountName,
+                    type = AccountTypes.BankMaster
+                })
+                .ToListAsync();
+                
+            return accounts;
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
+    #endregion
+
+    #region Reporting
 
     public async Task<LedgerReportResult> GetLedgerReportAsync(int accountId, string accountType, DateTime fromDate, DateTime toDate)
     {
-        var result = new LedgerReportResult();
-        
-        // 0. Calculate Opening Balance
-        result.OpeningBalance = await CalculateBalanceUntilAsync(accountId, accountType, fromDate);
-        
-        var allEntries = new List<GeneralEntry>();
-        
-        // 1. Fetch GeneralEntries
-        var query = _context.GeneralEntries
-            .Where(g => 
-                (g.EntryDate >= fromDate && g.EntryDate <= toDate)
-            );
-            
-        if (accountType == "BankMaster")
+        try
         {
-            // Filter by BankMaster on either debit or credit side
-            query = query.Where(g =>
-                (g.DebitAccountId == accountId && g.DebitAccountType == AccountTypes.BankMaster) ||
-                (g.CreditAccountId == accountId && g.CreditAccountType == AccountTypes.BankMaster)
-            );
-        }
-        else
-        {
-            // Dynamic filtering based on the passed accountType
-            query = query.Where(g =>
-                (g.DebitAccountId == accountId && g.DebitAccountType == accountType) ||
-                (g.CreditAccountId == accountId && g.CreditAccountType == accountType)
-            );
-        }
-        
-        // 1. Journal Entries (GeneralEntries)
-        var generalEntries = await query.ToListAsync();
-        foreach (var entry in generalEntries)
-        {
-            await LoadAccountNamesAsync(entry);
+            var result = new LedgerReportResult();
             
-            // Each GeneralEntry row is a balanced pair (1 Debit, 1 Credit).
-            // We just need to determine which side our account is on and show the other side as Particulars.
-            bool isOurDebit = (entry.DebitAccountId == accountId && entry.DebitAccountType == accountType);
+            // 0. Calculate Opening Balance
+            result.OpeningBalance = await CalculateBalanceUntilAsync(accountId, accountType, fromDate);
             
-            // Create a ledger entry representing this row's contribution to the selected account
-            var ledgerEntry = CreateLedgerEntry(entry, entry, entry.Amount, isOurDebit);
-            allEntries.Add(ledgerEntry);
-        }
-        
-        // 2. Fetch ReceiptEntries (All Accounts)
-        // Group by VoucherNo to handle breakdown in receipts
-        var allReceiptEntriesForReport = await _context.ReceiptEntries
-            .Where(r => 
-                r.IsActive &&
-                r.Status == "Approved" && 
-                r.ReceiptDate >= fromDate && 
-                r.ReceiptDate <= toDate
-            )
-            .ToListAsync();
-
-        var matchingVouchers = allReceiptEntriesForReport
-            .Where(r => r.AccountId == accountId && r.AccountType == accountType)
-            .Select(r => r.VoucherNo)
-            .Distinct()
-            .ToList();
-
-        foreach (var voucherNo in matchingVouchers)
-        {
-            // Get ALL entries for this specific voucher
-            var allVoucherReceipts = await _context.ReceiptEntries
-                .Where(r => r.VoucherNo == voucherNo && r.IsActive)
-                .ToListAsync();
-
-            var currentSideReceipts = allVoucherReceipts.Where(r => r.AccountId == accountId && r.AccountType == accountType).ToList();
+            var allEntries = new List<GeneralEntry>();
             
-            foreach (var entry in currentSideReceipts)
+            // 1. Fetch GeneralEntries
+            var query = _context.GeneralEntries
+                .Where(g => 
+                    (g.EntryDate >= fromDate && g.EntryDate <= toDate)
+                );
+                
+            if (accountType == "BankMaster")
             {
-                // Identify the actual opposite side entries based on the current side's Type (Debit vs Credit)
-                var actualOppositeEntries = allVoucherReceipts.Where(r => r.Type != entry.Type).ToList();
-
-                // Rule for Breakdown/Split:
-                // If we have ONE entry on OUR side and MULTIPLE on the opposite side, split it.
-                if (currentSideReceipts.Count(r => r.Type == entry.Type) == 1 && actualOppositeEntries.Count > 1)
-                {
-                    // Split logic for 1-to-Many
-                    foreach (var opEntry in actualOppositeEntries)
-                    {
-                        var pairedAccountName = await GetAccountNameAsync(opEntry.AccountId, opEntry.AccountType);
-                        var generalEntry = CreateReceiptLedgerEntry(entry, opEntry, opEntry.Amount, pairedAccountName);
-                        allEntries.Add(generalEntry);
-                    }
-                }
-                else
-                {
-                    // No split (1-to-1 or Many-to-1, or Many-to-Many fallback)
-                    // We'll show the current entry against the first available opposite account
-                    var opEntry = actualOppositeEntries.FirstOrDefault();
-                    var pairedAccountName = opEntry != null ? await GetAccountNameAsync(opEntry.AccountId, opEntry.AccountType) : "N/A";
-                    var generalEntry = CreateReceiptLedgerEntry(entry, opEntry, entry.Amount, pairedAccountName);
-                    allEntries.Add(generalEntry);
-                }
+                // Filter by BankMaster on either debit or credit side
+                query = query.Where(g =>
+                    (g.DebitAccountId == accountId && g.DebitAccountType == AccountTypes.BankMaster) ||
+                    (g.CreditAccountId == accountId && g.CreditAccountType == AccountTypes.BankMaster)
+                );
             }
-        }
-
-        // 3. Fetch Debit Notes if filtering by BankMaster (Vendor side)
-        if (accountType == AccountTypes.BankMaster)
-        {
-            var debitNotes = await _context.DebitNotes
-                .Where(d =>
-                    d.IsActive &&
-                    d.Status == "Approved" &&
-                    d.DebitNoteDate >= fromDate &&
-                    d.DebitNoteDate <= toDate
+            else
+            {
+                // Dynamic filtering based on the passed accountType
+                query = query.Where(g =>
+                    (g.DebitAccountId == accountId && g.DebitAccountType == accountType) ||
+                    (g.CreditAccountId == accountId && g.CreditAccountType == accountType)
+                );
+            }
+            
+            // 1. Journal Entries (GeneralEntries)
+            var generalEntries = await query.ToListAsync();
+            foreach (var entry in generalEntries)
+            {
+                await LoadAccountNamesAsync(entry);
+                
+                // Each GeneralEntry row is a balanced pair (1 Debit, 1 Credit).
+                // We just need to determine which side our account is on and show the other side as Particulars.
+                bool isOurDebit = (entry.DebitAccountId == accountId && entry.DebitAccountType == accountType);
+                
+                // Create a ledger entry representing this row's contribution to the selected account
+                var ledgerEntry = CreateLedgerEntry(entry, entry, entry.Amount, isOurDebit);
+                allEntries.Add(ledgerEntry);
+            }
+            
+            // 2. Fetch ReceiptEntries (All Accounts)
+            // Group by VoucherNo to handle breakdown in receipts
+            var allReceiptEntriesForReport = await _context.ReceiptEntries
+                .Where(r => 
+                    r.IsActive &&
+                    r.Status == "Approved" && 
+                    r.ReceiptDate >= fromDate && 
+                    r.ReceiptDate <= toDate
                 )
                 .ToListAsync();
 
-            var mappings = await LoadDebitNoteBankMasterIdMappingsAsync();
+            var matchingVouchers = allReceiptEntriesForReport
+                .Where(r => r.AccountId == accountId && r.AccountType == accountType)
+                .Select(r => r.VoucherNo)
+                .Distinct()
+                .ToList();
 
-            foreach (var note in debitNotes)
+            foreach (var voucherNo in matchingVouchers)
             {
-                int noteBankMasterId = note.BankMasterId ?? 0;
-                if (mappings.TryGetValue(note.Id, out int mappedId)) noteBankMasterId = mappedId;
+                // Get ALL entries for this specific voucher
+                var allVoucherReceipts = await _context.ReceiptEntries
+                    .Where(r => r.VoucherNo == voucherNo && r.IsActive)
+                    .ToListAsync();
 
-                if (noteBankMasterId == accountId)
+                var currentSideReceipts = allVoucherReceipts.Where(r => r.AccountId == accountId && r.AccountType == accountType).ToList();
+                
+                foreach (var entry in currentSideReceipts)
                 {
-                    // For each detail in the debit note, create a separate entry
-                    var noteDetails = await _context.DebitNoteDetails
-                        .Where(d => d.DebitNoteId == note.Id)
-                        .ToListAsync();
+                    // Identify the actual opposite side entries based on the current side's Type (Debit vs Credit)
+                    var actualOppositeEntries = allVoucherReceipts.Where(r => r.Type != entry.Type).ToList();
 
-                    if (noteDetails.Any())
+                    // Rule for Breakdown/Split:
+                    // If we have ONE entry on OUR side and MULTIPLE on the opposite side, split it.
+                    if (currentSideReceipts.Count(r => r.Type == entry.Type) == 1 && actualOppositeEntries.Count > 1)
                     {
-                        foreach (var detail in noteDetails)
+                        // Split logic for 1-to-Many
+                        foreach (var opEntry in actualOppositeEntries)
                         {
-                            var generalEntry = new GeneralEntry
+                            var pairedAccountName = await GetAccountNameAsync(opEntry.AccountId, opEntry.AccountType);
+                            var generalEntry = CreateReceiptLedgerEntry(entry, opEntry, opEntry.Amount, pairedAccountName);
+                            allEntries.Add(generalEntry);
+                        }
+                    }
+                    else
+                    {
+                        // No split (1-to-1 or Many-to-1, or Many-to-Many fallback)
+                        // We'll show the current entry against the first available opposite account
+                        var opEntry = actualOppositeEntries.FirstOrDefault();
+                        var pairedAccountName = opEntry != null ? await GetAccountNameAsync(opEntry.AccountId, opEntry.AccountType) : "N/A";
+                        var generalEntry = CreateReceiptLedgerEntry(entry, opEntry, entry.Amount, pairedAccountName);
+                        allEntries.Add(generalEntry);
+                    }
+                }
+            }
+
+            // 3. Fetch Debit Notes if filtering by BankMaster (Vendor side)
+            if (accountType == AccountTypes.BankMaster)
+            {
+                var debitNotes = await _context.DebitNotes
+                    .Where(d =>
+                        d.IsActive &&
+                        d.Status == "Approved" &&
+                        d.DebitNoteDate >= fromDate &&
+                        d.DebitNoteDate <= toDate
+                    )
+                    .ToListAsync();
+
+                var mappings = await LoadDebitNoteBankMasterIdMappingsAsync();
+
+                foreach (var note in debitNotes)
+                {
+                    int noteBankMasterId = note.BankMasterId ?? 0;
+                    if (mappings.TryGetValue(note.Id, out int mappedId)) noteBankMasterId = mappedId;
+
+                    if (noteBankMasterId == accountId)
+                    {
+                        // For each detail in the debit note, create a separate entry
+                        var noteDetails = await _context.DebitNoteDetails
+                            .Where(d => d.DebitNoteId == note.Id)
+                            .ToListAsync();
+
+                        if (noteDetails.Any())
+                        {
+                            foreach (var detail in noteDetails)
                             {
-                                Id = note.Id * -100 - detail.Id, // Unique pseudo ID
+                                var generalEntry = new GeneralEntry
+                                {
+                                    Id = note.Id * -100 - detail.Id, // Unique pseudo ID
+                                    VoucherNo = note.DebitNoteNo,
+                                    EntryDate = note.DebitNoteDate,
+                                    Amount = detail.Amount,
+                                    Narration = note.Narration,
+                                    Status = note.Status,
+                                    CreatedAt = note.CreatedAt,
+                                    DebitAccountId = noteBankMasterId,
+                                    DebitAccountType = AccountTypes.BankMaster,
+                                    VoucherType = "Debit Note",
+                                    Unit = note.Unit
+                                };
+
+                                // Set individual detail info as the "opposite" account info
+                                generalEntry.CreditBankMasterInfo = new BankMaster { AccountName = detail.AccountType };
+                                allEntries.Add(generalEntry);
+                            }
+                        }
+                        else
+                        {
+                            // Fallback if no details
+                            allEntries.Add(new GeneralEntry
+                            {
+                                Id = note.Id * -100,
                                 VoucherNo = note.DebitNoteNo,
                                 EntryDate = note.DebitNoteDate,
-                                Amount = detail.Amount,
+                                Amount = note.Amount ?? 0,
                                 Narration = note.Narration,
                                 Status = note.Status,
                                 CreatedAt = note.CreatedAt,
                                 DebitAccountId = noteBankMasterId,
                                 DebitAccountType = AccountTypes.BankMaster,
                                 VoucherType = "Debit Note",
+                                CreditBankMasterInfo = new BankMaster { AccountName = "Items" }, // Default fallback name
                                 Unit = note.Unit
-                            };
+                            });
+                        }
+                    }
+                }
+            }
 
-                            // Set individual detail info as the "opposite" account info
-                            generalEntry.CreditBankMasterInfo = new BankMaster { AccountName = detail.AccountType };
-                            allEntries.Add(generalEntry);
+            // 4. Fetch Credit Notes if filtering by Farmer (Grower side)
+            if (accountType == AccountTypes.Farmer)
+            {
+                var creditNotes = await _context.CreditNotes
+                    .Where(c =>
+                        c.IsActive &&
+                        c.Status == "Approved" &&
+                        c.CreditNoteDate >= fromDate &&
+                        c.CreditNoteDate <= toDate &&
+                        c.FarmerId == accountId
+                    )
+                    .ToListAsync();
+
+                foreach (var note in creditNotes)
+                {
+                    var noteDetails = await _context.CreditNoteDetails
+                        .Where(d => d.CreditNoteId == note.Id)
+                        .ToListAsync();
+
+                    if (noteDetails.Any())
+                    {
+                        foreach (var detail in noteDetails)
+                        {
+                            allEntries.Add(new GeneralEntry
+                            {
+                                Id = note.Id * -1000 - detail.Id, // Unique pseudo ID
+                                VoucherNo = note.CreditNoteNo,
+                                EntryDate = note.CreditNoteDate,
+                                Amount = detail.Amount,
+                                Narration = note.Narration,
+                                Status = note.Status,
+                                CreatedAt = note.CreatedAt,
+                                CreditAccountId = note.FarmerId ?? 0,
+                                CreditAccountType = AccountTypes.Farmer,
+
+                                VoucherType = "Credit Note",
+                                Unit = note.Unit,
+                                // Set individual detail info as the "opposite" account info
+                                DebitBankMasterInfo = new BankMaster { AccountName = detail.AccountType }
+                            });
                         }
                     }
                     else
                     {
-                        // Fallback if no details
                         allEntries.Add(new GeneralEntry
                         {
-                            Id = note.Id * -100,
-                            VoucherNo = note.DebitNoteNo,
-                            EntryDate = note.DebitNoteDate,
-                            Amount = note.Amount ?? 0,
-                            Narration = note.Narration,
-                            Status = note.Status,
-                            CreatedAt = note.CreatedAt,
-                            DebitAccountId = noteBankMasterId,
-                            DebitAccountType = AccountTypes.BankMaster,
-                            VoucherType = "Debit Note",
-                            CreditBankMasterInfo = new BankMaster { AccountName = "Items" }, // Default fallback name
-                            Unit = note.Unit
-                        });
-                    }
-                }
-            }
-        }
-
-        // 4. Fetch Credit Notes if filtering by Farmer (Grower side)
-        if (accountType == AccountTypes.Farmer)
-        {
-            var creditNotes = await _context.CreditNotes
-                .Where(c =>
-                    c.IsActive &&
-                    c.Status == "Approved" &&
-                    c.CreditNoteDate >= fromDate &&
-                    c.CreditNoteDate <= toDate &&
-                    c.FarmerId == accountId
-                )
-                .ToListAsync();
-
-            foreach (var note in creditNotes)
-            {
-                var noteDetails = await _context.CreditNoteDetails
-                    .Where(d => d.CreditNoteId == note.Id)
-                    .ToListAsync();
-
-                if (noteDetails.Any())
-                {
-                    foreach (var detail in noteDetails)
-                    {
-                        allEntries.Add(new GeneralEntry
-                        {
-                            Id = note.Id * -1000 - detail.Id, // Unique pseudo ID
+                            Id = note.Id * -1000, // Unique pseudo ID
                             VoucherNo = note.CreditNoteNo,
                             EntryDate = note.CreditNoteDate,
-                            Amount = detail.Amount,
+                            Amount = note.Amount ?? 0,
                             Narration = note.Narration,
                             Status = note.Status,
                             CreatedAt = note.CreatedAt,
                             CreditAccountId = note.FarmerId ?? 0,
                             CreditAccountType = AccountTypes.Farmer,
-
                             VoucherType = "Credit Note",
-                            Unit = note.Unit,
-                            // Set individual detail info as the "opposite" account info
-                            DebitBankMasterInfo = new BankMaster { AccountName = detail.AccountType }
+                            DebitBankMasterInfo = new BankMaster { AccountName = "Items" }, // Default fallback name
+                            Unit = note.Unit
                         });
                     }
                 }
+            }
+
+            // 5. Payment Settlements
+            // Fetch all matching PANumbers first to avoid N+1 queries later if possible, 
+            // but for simplicity and correctness, we'll fetch them in a way that allows finding the opposite side.
+            var matchedSettlements = await _context.PaymentSettlements
+                .Where(s => 
+                    s.IsActive && 
+                    s.ApprovalStatus == "Approved" &&
+                    s.SettlementDate >= fromDate && s.SettlementDate <= toDate &&
+                    (
+                        (s.AccountId == accountId && s.AccountType == accountType) ||
+                        (s.EntryForId == accountId && accountType == AccountTypes.SubGroupLedger)
+                    )
+                )
+                .ToListAsync();
+
+            var paNumbers = matchedSettlements.Select(s => s.PANumber).Distinct().ToList();
+            var allRelatedSettlements = await _context.PaymentSettlements
+                .Where(s => paNumbers.Contains(s.PANumber) && s.IsActive)
+                .ToListAsync();
+
+            foreach (var s in matchedSettlements)
+            {
+                // Find the opposite side in the same batch
+                var oppositeEntries = allRelatedSettlements
+                    .Where(r => r.PANumber == s.PANumber && r.Type != s.Type)
+                    .ToList();
+
+                string oppositeName = "N/A";
+                if (oppositeEntries.Any())
+                {
+                    // Join names if multiple (though usually it's 1-to-1)
+                    oppositeName = string.Join(", ", oppositeEntries.Select(oe => oe.AccountName).Distinct());
+                }
+
+                var ge = new GeneralEntry
+                {
+                    Id = s.Id * -5000, 
+                    VoucherNo = s.PANumber,
+                    EntryDate = s.SettlementDate,
+                    Amount = s.Amount,
+                    Narration = s.Narration,
+                    Status = s.ApprovalStatus,
+                    CreatedAt = s.CreatedAt,
+                    VoucherType = "Payment Settlement",
+                    PaymentType = s.PaymentType,
+                    Unit = s.Unit
+                };
+
+                // Setup the side we are viewing
+                bool isDebit = (s.Type == "Debit" || s.Type == "Payment");
+                if (isDebit)
+                {
+                    ge.DebitAccountId = s.AccountId;
+                    ge.DebitAccountType = s.AccountType;
+                    ge.CreditBankMasterInfo = new BankMaster { AccountName = oppositeName };
+                }
                 else
                 {
-                    allEntries.Add(new GeneralEntry
-                    {
-                        Id = note.Id * -1000, // Unique pseudo ID
-                        VoucherNo = note.CreditNoteNo,
-                        EntryDate = note.CreditNoteDate,
-                        Amount = note.Amount ?? 0,
-                        Narration = note.Narration,
-                        Status = note.Status,
-                        CreatedAt = note.CreatedAt,
-                        CreditAccountId = note.FarmerId ?? 0,
-                        CreditAccountType = AccountTypes.Farmer,
-                        VoucherType = "Credit Note",
-                        DebitBankMasterInfo = new BankMaster { AccountName = "Items" }, // Default fallback name
-                        Unit = note.Unit
-                    });
+                    ge.CreditAccountId = s.AccountId;
+                    ge.CreditAccountType = s.AccountType;
+                    ge.DebitBankMasterInfo = new BankMaster { AccountName = oppositeName };
                 }
+
+                allEntries.Add(ge);
             }
-        }
-
-        // 5. Payment Settlements
-        // Fetch all matching PANumbers first to avoid N+1 queries later if possible, 
-        // but for simplicity and correctness, we'll fetch them in a way that allows finding the opposite side.
-        var matchedSettlements = await _context.PaymentSettlements
-            .Where(s => 
-                s.IsActive && 
-                s.ApprovalStatus == "Approved" &&
-                s.SettlementDate >= fromDate && s.SettlementDate <= toDate &&
-                (
-                    (s.AccountId == accountId && s.AccountType == accountType) ||
-                    (s.EntryForId == accountId && accountType == AccountTypes.SubGroupLedger)
-                )
-            )
-            .ToListAsync();
-
-        var paNumbers = matchedSettlements.Select(s => s.PANumber).Distinct().ToList();
-        var allRelatedSettlements = await _context.PaymentSettlements
-            .Where(s => paNumbers.Contains(s.PANumber) && s.IsActive)
-            .ToListAsync();
-
-        foreach (var s in matchedSettlements)
-        {
-            // Find the opposite side in the same batch
-            var oppositeEntries = allRelatedSettlements
-                .Where(r => r.PANumber == s.PANumber && r.Type != s.Type)
+            
+            // 6. Sort all entries by date
+            result.Entries = allEntries
+                .OrderBy(e => e.EntryDate)
+                .ThenBy(e => e.Id)
                 .ToList();
 
-            string oppositeName = "N/A";
-            if (oppositeEntries.Any())
+            // Calculate Closing Balance
+            decimal bal = result.OpeningBalance;
+            foreach (var entry in result.Entries)
             {
-                // Join names if multiple (though usually it's 1-to-1)
-                oppositeName = string.Join(", ", oppositeEntries.Select(oe => oe.AccountName).Distinct());
+                bool isOurDebit = (entry.DebitAccountId == accountId && entry.DebitAccountType == accountType);
+                decimal d = isOurDebit ? entry.Amount : 0;
+                decimal c = isOurDebit ? 0 : entry.Amount;
+                bal += (c - d);
             }
+            result.ClosingBalance = bal;
 
-            var ge = new GeneralEntry
-            {
-                Id = s.Id * -5000, 
-                VoucherNo = s.PANumber,
-                EntryDate = s.SettlementDate,
-                Amount = s.Amount,
-                Narration = s.Narration,
-                Status = s.ApprovalStatus,
-                CreatedAt = s.CreatedAt,
-                VoucherType = "Payment Settlement",
-                PaymentType = s.PaymentType,
-                Unit = s.Unit
-            };
-
-            // Setup the side we are viewing
-            bool isDebit = (s.Type == "Debit" || s.Type == "Payment");
-            if (isDebit)
-            {
-                ge.DebitAccountId = s.AccountId;
-                ge.DebitAccountType = s.AccountType;
-                ge.CreditBankMasterInfo = new BankMaster { AccountName = oppositeName };
-            }
-            else
-            {
-                ge.CreditAccountId = s.AccountId;
-                ge.CreditAccountType = s.AccountType;
-                ge.DebitBankMasterInfo = new BankMaster { AccountName = oppositeName };
-            }
-
-            allEntries.Add(ge);
+            return result;
         }
-        
-        // 6. Sort all entries by date
-        result.Entries = allEntries
-            .OrderBy(e => e.EntryDate)
-            .ThenBy(e => e.Id)
-            .ToList();
-
-        // Calculate Closing Balance
-        decimal bal = result.OpeningBalance;
-        foreach (var entry in result.Entries)
+        catch (Exception)
         {
-            bool isOurDebit = (entry.DebitAccountId == accountId && entry.DebitAccountType == accountType);
-            decimal d = isOurDebit ? entry.Amount : 0;
-            decimal c = isOurDebit ? 0 : entry.Amount;
-            bal += (c - d);
+            throw;
         }
-        result.ClosingBalance = bal;
-
-        return result;
     }
 
     private async Task<decimal> CalculateBalanceUntilAsync(int accountId, string accountType, DateTime untilDate)
     {
-        // 1. GeneralEntries (Journal)
-        var geDebit = await _context.GeneralEntries
-            .Where(g => g.DebitAccountId == accountId && g.DebitAccountType == accountType && g.EntryDate < untilDate)
-            .SumAsync(g => (decimal?)g.Amount) ?? 0;
-        var geCredit = await _context.GeneralEntries
-            .Where(g => g.CreditAccountId == accountId && g.CreditAccountType == accountType && g.EntryDate < untilDate)
-            .SumAsync(g => (decimal?)g.Amount) ?? 0;
-
-        // 2. ReceiptEntries
-        var reDebit = await _context.ReceiptEntries
-            .Where(r => r.IsActive && r.Status == "Approved" && r.AccountId == accountId && r.AccountType == accountType && (r.Type == "Debit" || r.Type == "Payment") && r.ReceiptDate < untilDate)
-            .SumAsync(r => (decimal?)r.Amount) ?? 0;
-        var reCredit = await _context.ReceiptEntries
-            .Where(r => r.IsActive && r.Status == "Approved" && r.AccountId == accountId && r.AccountType == accountType && (r.Type == "Credit" || r.Type == "Receipt") && r.ReceiptDate < untilDate)
-            .SumAsync(r => (decimal?)r.Amount) ?? 0;
-
-        // 3. PaymentSettlements
-        var psDebit = await _context.PaymentSettlements
-            .Where(s => s.IsActive && s.ApprovalStatus == "Approved" && s.AccountId == accountId && s.AccountType == accountType && (s.Type == "Debit" || s.Type == "Payment") && s.SettlementDate < untilDate)
-            .SumAsync(s => (decimal?)s.Amount) ?? 0;
-        var psCredit = await _context.PaymentSettlements
-            .Where(s => s.IsActive && s.ApprovalStatus == "Approved" && s.AccountId == accountId && s.AccountType == accountType && (s.Type == "Credit" || s.Type == "Receipt") && s.SettlementDate < untilDate)
-            .SumAsync(s => (decimal?)s.Amount) ?? 0;
-
-        // 4. Debit Notes
-        decimal dnAmount = 0;
-        if (accountType == AccountTypes.BankMaster)
+        try
         {
-             var mappings = await LoadDebitNoteBankMasterIdMappingsAsync();
-             var debitNotes = await _context.DebitNotes
-                .Where(d => d.IsActive && d.Status == "Approved" && d.DebitNoteDate < untilDate)
-                .ToListAsync();
-             foreach(var note in debitNotes)
-             {
-                 int noteBankMasterId = note.BankMasterId ?? 0;
-                 if (mappings.TryGetValue(note.Id, out int mappedId)) noteBankMasterId = mappedId;
-                 if(noteBankMasterId == accountId) dnAmount += (note.Amount ?? 0);
-             }
-        }
+            // 1. GeneralEntries (Journal)
+            var geDebit = await _context.GeneralEntries
+                .Where(g => g.DebitAccountId == accountId && g.DebitAccountType == accountType && g.EntryDate < untilDate)
+                .SumAsync(g => (decimal?)g.Amount) ?? 0;
+            var geCredit = await _context.GeneralEntries
+                .Where(g => g.CreditAccountId == accountId && g.CreditAccountType == accountType && g.EntryDate < untilDate)
+                .SumAsync(g => (decimal?)g.Amount) ?? 0;
 
-        // 5. Credit Notes
-        decimal cnAmount = 0;
-        if (accountType == AccountTypes.Farmer)
+            // 2. ReceiptEntries
+            var reDebit = await _context.ReceiptEntries
+                .Where(r => r.IsActive && r.Status == "Approved" && r.AccountId == accountId && r.AccountType == accountType && (r.Type == "Debit" || r.Type == "Payment") && r.ReceiptDate < untilDate)
+                .SumAsync(r => (decimal?)r.Amount) ?? 0;
+            var reCredit = await _context.ReceiptEntries
+                .Where(r => r.IsActive && r.Status == "Approved" && r.AccountId == accountId && r.AccountType == accountType && (r.Type == "Credit" || r.Type == "Receipt") && r.ReceiptDate < untilDate)
+                .SumAsync(r => (decimal?)r.Amount) ?? 0;
+
+            // 3. PaymentSettlements
+            var psDebit = await _context.PaymentSettlements
+                .Where(s => s.IsActive && s.ApprovalStatus == "Approved" && s.AccountId == accountId && s.AccountType == accountType && (s.Type == "Debit" || s.Type == "Payment") && s.SettlementDate < untilDate)
+                .SumAsync(s => (decimal?)s.Amount) ?? 0;
+            var psCredit = await _context.PaymentSettlements
+                .Where(s => s.IsActive && s.ApprovalStatus == "Approved" && s.AccountId == accountId && s.AccountType == accountType && (s.Type == "Credit" || s.Type == "Receipt") && s.SettlementDate < untilDate)
+                .SumAsync(s => (decimal?)s.Amount) ?? 0;
+
+            // 4. Debit Notes
+            decimal dnAmount = 0;
+            if (accountType == AccountTypes.BankMaster)
+            {
+                 var mappings = await LoadDebitNoteBankMasterIdMappingsAsync();
+                 var debitNotes = await _context.DebitNotes
+                    .Where(d => d.IsActive && d.Status == "Approved" && d.DebitNoteDate < untilDate)
+                    .ToListAsync();
+                 foreach(var note in debitNotes)
+                 {
+                     int noteBankMasterId = note.BankMasterId ?? 0;
+                     if (mappings.TryGetValue(note.Id, out int mappedId)) noteBankMasterId = mappedId;
+                     if(noteBankMasterId == accountId) dnAmount += (note.Amount ?? 0);
+                 }
+            }
+
+            // 5. Credit Notes
+            decimal cnAmount = 0;
+            if (accountType == AccountTypes.Farmer)
+            {
+                 cnAmount = await _context.CreditNotes
+                    .Where(c => c.IsActive && c.Status == "Approved" && c.FarmerId == accountId && c.CreditNoteDate < untilDate)
+                    .SumAsync(c => c.Amount ?? 0);
+            }
+
+            return (geCredit + reCredit + psCredit + cnAmount) - (geDebit + reDebit + psDebit + dnAmount);
+        }
+        catch (Exception)
         {
-             cnAmount = await _context.CreditNotes
-                .Where(c => c.IsActive && c.Status == "Approved" && c.FarmerId == accountId && c.CreditNoteDate < untilDate)
-                .SumAsync(c => c.Amount ?? 0);
+            throw;
         }
-
-        return (geCredit + reCredit + psCredit + cnAmount) - (geDebit + reDebit + psDebit + dnAmount);
     }
+    #endregion
 
-        private async Task<string> GetAccountNameAsync(int accountId, string accountType)
+        #region Reporting Helpers
+    private async Task<string> GetAccountNameAsync(int accountId, string accountType)
     {
-        return accountType switch
+        try
         {
-            AccountTypes.BankMaster => (await _context.BankMasters.FindAsync(accountId))?.AccountName ?? "",
-            AccountTypes.MasterGroup => (await _context.MasterGroups.FindAsync(accountId))?.Name ?? "",
-            AccountTypes.MasterSubGroup => (await _context.MasterSubGroups.FindAsync(accountId))?.Name ?? "",
-            AccountTypes.SubGroupLedger => (await _context.SubGroupLedgers.FindAsync(accountId))?.Name ?? "",
-            AccountTypes.Farmer => (await _context.Farmers.FindAsync(accountId))?.FarmerName ?? "",
-            _ => ""
-        };
+            return accountType switch
+            {
+                AccountTypes.BankMaster => (await _context.BankMasters.FindAsync(accountId))?.AccountName ?? "",
+                AccountTypes.MasterGroup => (await _context.MasterGroups.FindAsync(accountId))?.Name ?? "",
+                AccountTypes.MasterSubGroup => (await _context.MasterSubGroups.FindAsync(accountId))?.Name ?? "",
+                AccountTypes.SubGroupLedger => (await _context.SubGroupLedgers.FindAsync(accountId))?.Name ?? "",
+                AccountTypes.Farmer => (await _context.Farmers.FindAsync(accountId))?.FarmerName ?? "",
+                _ => ""
+            };
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<string> GetMediatorAccountNameAsync()
     {
-        var mediator = await _context.MasterGroups
-            .OrderBy(mg => mg.Id)
-            .FirstOrDefaultAsync();
-        return mediator?.Name ?? "ASSETS";
+        try
+        {
+            var mediator = await _context.MasterGroups
+                .OrderBy(mg => mg.Id)
+                .FirstOrDefaultAsync();
+            return mediator?.Name ?? "ASSETS";
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     private async Task<Dictionary<int, int>> LoadDebitNoteBankMasterIdMappingsAsync()
@@ -1701,7 +1854,9 @@ public class GeneralEntryService : IGeneralEntryService
 
         return generalEntry;
     }
+    #endregion
     
+    #region Grower Book Management
     public async Task<(bool success, string message)> CreateGrowerBookEntryAsync(GeneralEntry entry)
     {
         var currentUser = GetCurrentUsername();
@@ -1846,246 +2001,287 @@ public class GeneralEntryService : IGeneralEntryService
             }
         });
     }
+    #endregion
 
+    #region Grower Book Retrieval
     public async Task<(List<GeneralEntry> entries, int totalCount, int totalPages)> GetGrowerBookEntriesAsync(
         DateTime? fromDate, DateTime? toDate, string? bookNo, string? fromGrower, string? toGrower, string? status, string? unit, int page, int pageSize)
     {
-        var query = _context.GeneralEntries
-            .Where(g => g.IsActive && g.VoucherNo.StartsWith("GBK/"))
-            .AsQueryable();
-
-        if (fromDate.HasValue) query = query.Where(g => g.EntryDate >= fromDate.Value);
-        if (toDate.HasValue) query = query.Where(g => g.EntryDate <= toDate.Value);
-        if (!string.IsNullOrEmpty(status) && status != "All") query = query.Where(g => g.Status == status);
-        if (!string.IsNullOrEmpty(bookNo)) query = query.Where(g => g.VoucherNo.Contains(bookNo));
-        if (!string.IsNullOrEmpty(unit) && unit != "All") query = query.Where(g => g.Unit == unit);
-
-        if (!string.IsNullOrEmpty(fromGrower))
+        try
         {
-            // Search BankMasters now
-            var farmerIds = await _context.BankMasters
-                .Where(b => b.AccountName.Contains(fromGrower))
-                .Select(b => b.Id)
+            var query = _context.GeneralEntries
+                .Where(g => g.IsActive && g.VoucherNo.StartsWith("GBK/"))
+                .AsQueryable();
+
+            if (fromDate.HasValue) query = query.Where(g => g.EntryDate >= fromDate.Value);
+            if (toDate.HasValue) query = query.Where(g => g.EntryDate <= toDate.Value);
+            if (!string.IsNullOrEmpty(status) && status != "All") query = query.Where(g => g.Status == status);
+            if (!string.IsNullOrEmpty(bookNo)) query = query.Where(g => g.VoucherNo.Contains(bookNo));
+            if (!string.IsNullOrEmpty(unit) && unit != "All") query = query.Where(g => g.Unit == unit);
+
+            if (!string.IsNullOrEmpty(fromGrower))
+            {
+                // Search BankMasters now
+                var farmerIds = await _context.BankMasters
+                    .Where(b => b.AccountName.Contains(fromGrower))
+                    .Select(b => b.Id)
+                    .ToListAsync();
+                
+                if (farmerIds.Any())
+                {
+                     query = query.Where(g => 
+                        (g.DebitAccountType == "BankMaster" && farmerIds.Contains(g.DebitAccountId)) ||
+                        (g.CreditAccountType == "BankMaster" && farmerIds.Contains(g.CreditAccountId))
+                    );
+                }
+                else
+                {
+                    return (new List<GeneralEntry>(), 0, 0); 
+                }
+            }
+
+            if (!string.IsNullOrEmpty(toGrower))
+            {
+                 // Search BankMasters now
+                 var farmerIds = await _context.BankMasters
+                    .Where(b => b.AccountName.Contains(toGrower))
+                    .Select(b => b.Id)
+                    .ToListAsync();
+                
+                 if (farmerIds.Any())
+                {
+                     query = query.Where(g => 
+                        (g.DebitAccountType == "BankMaster" && farmerIds.Contains(g.DebitAccountId)) ||
+                        (g.CreditAccountType == "BankMaster" && farmerIds.Contains(g.CreditAccountId))
+                    );
+                }
+                 else { return (new List<GeneralEntry>(), 0, 0); }
+            }
+
+            var totalCount = await query.CountAsync();
+            var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+
+            var entries = await query
+                .OrderByDescending(g => g.CreatedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync();
-            
-            if (farmerIds.Any())
-            {
-                 query = query.Where(g => 
-                    (g.DebitAccountType == "BankMaster" && farmerIds.Contains(g.DebitAccountId)) ||
-                    (g.CreditAccountType == "BankMaster" && farmerIds.Contains(g.CreditAccountId))
-                );
-            }
-            else
-            {
-                return (new List<GeneralEntry>(), 0, 0); 
-            }
-        }
 
-        if (!string.IsNullOrEmpty(toGrower))
+            foreach (var entry in entries)
+            {
+                await LoadAccountNamesAsync(entry);
+            }
+
+            return (entries, totalCount, totalPages);
+        }
+        catch (Exception)
         {
-             // Search BankMasters now
-             var farmerIds = await _context.BankMasters
-                .Where(b => b.AccountName.Contains(toGrower))
-                .Select(b => b.Id)
-                .ToListAsync();
-            
-             if (farmerIds.Any())
-            {
-                 query = query.Where(g => 
-                    (g.DebitAccountType == "BankMaster" && farmerIds.Contains(g.DebitAccountId)) ||
-                    (g.CreditAccountType == "BankMaster" && farmerIds.Contains(g.CreditAccountId))
-                );
-            }
-             else { return (new List<GeneralEntry>(), 0, 0); }
+            throw;
         }
-
-        var totalCount = await query.CountAsync();
-        var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
-
-        var entries = await query
-            .OrderByDescending(g => g.CreatedAt)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync();
-
-        foreach (var entry in entries)
-        {
-            await LoadAccountNamesAsync(entry);
-        }
-
-        return (entries, totalCount, totalPages);
-    
     }
+    #endregion
 
+    #region Grower Book Lookups
     public async Task<IEnumerable<object>> GetGrowerGroupsAsync(string? searchTerm)
     {
-        var query = _context.SubGroupLedgers.AsNoTracking()
-             .Include(s => s.MasterGroup)
-             .Where(g => g.IsActive && (g.Name.Contains("Grower") || g.MasterGroup.Name.Contains("Grower")));
-
-        if (!string.IsNullOrEmpty(searchTerm))
+        try
         {
-            query = query.Where(g => g.Name.Contains(searchTerm));
-        }
+            var query = _context.SubGroupLedgers.AsNoTracking()
+                 .Include(s => s.MasterGroup)
+                 .Where(g => g.IsActive && (g.Name.Contains("Grower") || g.MasterGroup.Name.Contains("Grower")));
 
-        return await query
-            .OrderBy(g => g.Name)
-            .Take(20)
-            .Select(g => new { id = g.Id, name = $"{g.Name} ({g.MasterGroup.Name})" })
-            .ToListAsync();
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                query = query.Where(g => g.Name.Contains(searchTerm));
+            }
+
+            return await query
+                .OrderBy(g => g.Name)
+                .Take(20)
+                .Select(g => new { id = g.Id, name = $"{g.Name} ({g.MasterGroup.Name})" })
+                .ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<IEnumerable<object>> GetFarmersByGroupAsync(int? groupId, string? searchTerm, string? type = null)
     {
-        // 1. Fetch grower-related SubGroupLedger IDs (Grower Groups)
-        var growerGroupIds = await _context.SubGroupLedgers
-            .Where(s => s.IsActive && (s.Name.Contains("Grower") || s.MasterGroup.Name.Contains("Grower")))
-            .Select(s => s.Id)
-            .ToListAsync();
-
-        if (!growerGroupIds.Any())
+        try
         {
-            return new List<object>();
+            // 1. Fetch grower-related SubGroupLedger IDs (Grower Groups)
+            var growerGroupIds = await _context.SubGroupLedgers
+                .Where(s => s.IsActive && (s.Name.Contains("Grower") || s.MasterGroup.Name.Contains("Grower")))
+                .Select(s => s.Id)
+                .ToListAsync();
+
+            if (!growerGroupIds.Any())
+            {
+                return new List<object>();
+            }
+
+            // 2. Fetch Rules dictionary for fast lookup
+            var rules = await _context.AccountRules
+                .Where(r => r.RuleType == "AllowedNature" && r.AccountType == "BankMaster")
+                .ToListAsync();
+            
+            var rulesDict = rules.ToDictionary(r => r.AccountId, r => r.Value);
+
+            // Helper to check if account is allowed
+            bool IsAllowed(int bankMasterId)
+            {
+                if (string.IsNullOrEmpty(type)) return true;
+
+                if (!rulesDict.ContainsKey(bankMasterId)) return true; // No rule = Allowed (Both)
+                var ruleValue = rulesDict[bankMasterId];
+                if (ruleValue == "Both") return true;
+
+                // Map GrowerBook Type to Debit/Credit
+                // Payment -> Debit Farmer
+                // Receipt/Journal -> Credit Farmer
+                string neededType = (type == "Payment") ? "Debit" : "Credit";
+
+                return ruleValue == neededType;
+            }
+
+            // 3. Query BankMasters that belong to Grower groups
+            var query = _context.BankMasters
+                .AsNoTracking()
+                .Where(b => b.IsActive && growerGroupIds.Contains(b.GroupId));
+
+            // 4. Apply specific group filter if provided
+            if (groupId.HasValue && groupId.Value > 0)
+            {
+                query = query.Where(b => b.GroupId == groupId.Value);
+            }
+
+            // 5. Apply search term filter
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                query = query.Where(b => b.AccountName.Contains(searchTerm));
+            }
+
+            var list = await query
+                .OrderBy(b => b.AccountName)
+                .Take(50)
+                .ToListAsync();
+
+            return list
+                .Where(b => IsAllowed(b.Id))
+                .Select(b => new { id = b.Id, name = b.AccountName, type = AccountTypes.BankMaster });
         }
-
-        // 2. Fetch Rules dictionary for fast lookup
-        var rules = await _context.AccountRules
-            .Where(r => r.RuleType == "AllowedNature" && r.AccountType == "BankMaster")
-            .ToListAsync();
-        
-        var rulesDict = rules.ToDictionary(r => r.AccountId, r => r.Value);
-
-        // Helper to check if account is allowed
-        bool IsAllowed(int bankMasterId)
+        catch (Exception)
         {
-            if (string.IsNullOrEmpty(type)) return true;
-
-            if (!rulesDict.ContainsKey(bankMasterId)) return true; // No rule = Allowed (Both)
-            var ruleValue = rulesDict[bankMasterId];
-            if (ruleValue == "Both") return true;
-
-            // Map GrowerBook Type to Debit/Credit
-            // Payment -> Debit Farmer
-            // Receipt/Journal -> Credit Farmer
-            string neededType = (type == "Payment") ? "Debit" : "Credit";
-
-            return ruleValue == neededType;
+            throw;
         }
-
-        // 3. Query BankMasters that belong to Grower groups
-        var query = _context.BankMasters
-            .AsNoTracking()
-            .Where(b => b.IsActive && growerGroupIds.Contains(b.GroupId));
-
-        // 4. Apply specific group filter if provided
-        if (groupId.HasValue && groupId.Value > 0)
-        {
-            query = query.Where(b => b.GroupId == groupId.Value);
-        }
-
-        // 5. Apply search term filter
-        if (!string.IsNullOrEmpty(searchTerm))
-        {
-            query = query.Where(b => b.AccountName.Contains(searchTerm));
-        }
-
-        var list = await query
-            .OrderBy(b => b.AccountName)
-            .Take(50)
-            .ToListAsync();
-
-        return list
-            .Where(b => IsAllowed(b.Id))
-            .Select(b => new { id = b.Id, name = b.AccountName, type = AccountTypes.BankMaster });
     }
 
     public async Task<IEnumerable<LookupItem>> GetGrowerAccountsAsync(string? searchTerm, string? transactionType, string? accountSide, int? entryForId = null)
     {
-        // Require EntryForId for strict filtering as per request (or handle null reasonably)
-        if (!entryForId.HasValue || entryForId == 0)
+        try
         {
-            return new List<LookupItem>();
+            // Require EntryForId for strict filtering as per request (or handle null reasonably)
+            if (!entryForId.HasValue || entryForId == 0)
+            {
+                return new List<LookupItem>();
+            }
+
+            // 1. Fetch Rules dictionary for fast lookup
+            var rules = await _context.AccountRules
+                .Where(r => r.RuleType == "AllowedNature" && r.EntryAccountId == entryForId)
+                .ToListAsync();
+
+            bool CheckRule(string ruleValue)
+            {
+                if (string.IsNullOrWhiteSpace(ruleValue)) return false;
+                if (string.Equals(ruleValue, "Both", StringComparison.OrdinalIgnoreCase)) return true;
+                if (string.Equals(ruleValue, "Cancel", StringComparison.OrdinalIgnoreCase)) return false;
+
+                if (string.IsNullOrWhiteSpace(accountSide)) return true; 
+
+                if (string.Equals(ruleValue, "Debit", StringComparison.OrdinalIgnoreCase) && string.Equals(accountSide, "Debit", StringComparison.OrdinalIgnoreCase)) return true;
+                if (string.Equals(ruleValue, "Credit", StringComparison.OrdinalIgnoreCase) && string.Equals(accountSide, "Credit", StringComparison.OrdinalIgnoreCase)) return true;
+
+                return false;
+            }
+
+            // 2. Build Allowed ID Sets from Rules
+            var allowedSubGroupIds = rules
+                .Where(r => r.AccountType == "SubGroupLedger" && CheckRule(r.Value))
+                .Select(r => r.AccountId)
+                .ToHashSet();
+
+            var allowedGrowerGroupIds = rules
+                .Where(r => r.AccountType == "GrowerGroup" && CheckRule(r.Value))
+                .Select(r => r.AccountId)
+                .ToHashSet();
+
+            var allowedBankMasterIds = rules
+                .Where(r => r.AccountType == "BankMaster" && CheckRule(r.Value))
+                .Select(r => r.AccountId)
+                .ToHashSet();
+
+            var allowedFarmerIds = rules
+                .Where(r => r.AccountType == "Farmer" && CheckRule(r.Value))
+                .Select(r => r.AccountId)
+                .ToHashSet();
+
+            // 3. Query DB with Allowed List
+            var bankMastersQuery = _context.BankMasters.Where(bm => bm.IsActive);
+            var farmersQuery = _context.Farmers.Where(f => f.IsActive);
+
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                bankMastersQuery = bankMastersQuery.Where(bm => bm.AccountName.Contains(searchTerm));
+                farmersQuery = farmersQuery.Where(f => f.FarmerName.Contains(searchTerm));
+            }
+
+            // Execute Queries - Filtering by ID sets
+            // For BankMasters: Match ID OR GroupId (SubGroupLedger)
+            var bankMasters = await bankMastersQuery
+                .Where(bm => allowedBankMasterIds.Contains(bm.Id) || allowedSubGroupIds.Contains(bm.GroupId))
+                .OrderBy(bm => bm.AccountName)
+                .Take(50)
+                .ToListAsync();
+
+            // For Farmers: Match ID OR GroupId (GrowerGroup)
+            var farmers = await farmersQuery
+                .Where(f => allowedFarmerIds.Contains(f.Id) || allowedGrowerGroupIds.Contains(f.GroupId))
+                .OrderBy(f => f.FarmerName)
+                .Take(50)
+                .ToListAsync();
+
+            var results = new List<LookupItem>();
+            results.AddRange(bankMasters.Select(bm => new LookupItem { Id = bm.Id, Name = bm.AccountName, Type = AccountTypes.BankMaster, AccountNumber = bm.AccountNumber }));
+            results.AddRange(farmers.Select(f => new LookupItem { Id = f.Id, Name = f.FarmerName, Type = AccountTypes.Farmer, AccountNumber = f.FarmerCode }));
+
+            return results.OrderBy(r => r.Name).Take(100).ToList();
         }
-
-        // 1. Fetch Rules dictionary for fast lookup
-        var rules = await _context.AccountRules
-            .Where(r => r.RuleType == "AllowedNature" && r.EntryAccountId == entryForId)
-            .ToListAsync();
-
-        bool CheckRule(string ruleValue)
+        catch (Exception)
         {
-            if (string.IsNullOrWhiteSpace(ruleValue)) return false;
-            if (string.Equals(ruleValue, "Both", StringComparison.OrdinalIgnoreCase)) return true;
-            if (string.Equals(ruleValue, "Cancel", StringComparison.OrdinalIgnoreCase)) return false;
-
-            if (string.IsNullOrWhiteSpace(accountSide)) return true; 
-
-            if (string.Equals(ruleValue, "Debit", StringComparison.OrdinalIgnoreCase) && string.Equals(accountSide, "Debit", StringComparison.OrdinalIgnoreCase)) return true;
-            if (string.Equals(ruleValue, "Credit", StringComparison.OrdinalIgnoreCase) && string.Equals(accountSide, "Credit", StringComparison.OrdinalIgnoreCase)) return true;
-
-            return false;
+            throw;
         }
-
-        // 2. Build Allowed ID Sets from Rules
-        var allowedSubGroupIds = rules
-            .Where(r => r.AccountType == "SubGroupLedger" && CheckRule(r.Value))
-            .Select(r => r.AccountId)
-            .ToHashSet();
-
-        var allowedGrowerGroupIds = rules
-            .Where(r => r.AccountType == "GrowerGroup" && CheckRule(r.Value))
-            .Select(r => r.AccountId)
-            .ToHashSet();
-
-        var allowedBankMasterIds = rules
-            .Where(r => r.AccountType == "BankMaster" && CheckRule(r.Value))
-            .Select(r => r.AccountId)
-            .ToHashSet();
-
-        var allowedFarmerIds = rules
-            .Where(r => r.AccountType == "Farmer" && CheckRule(r.Value))
-            .Select(r => r.AccountId)
-            .ToHashSet();
-
-        // 3. Query DB with Allowed List
-        var bankMastersQuery = _context.BankMasters.Where(bm => bm.IsActive);
-        var farmersQuery = _context.Farmers.Where(f => f.IsActive);
-
-        if (!string.IsNullOrEmpty(searchTerm))
-        {
-            bankMastersQuery = bankMastersQuery.Where(bm => bm.AccountName.Contains(searchTerm));
-            farmersQuery = farmersQuery.Where(f => f.FarmerName.Contains(searchTerm));
-        }
-
-        // Execute Queries - Filtering by ID sets
-        // For BankMasters: Match ID OR GroupId (SubGroupLedger)
-        var bankMasters = await bankMastersQuery
-            .Where(bm => allowedBankMasterIds.Contains(bm.Id) || allowedSubGroupIds.Contains(bm.GroupId))
-            .OrderBy(bm => bm.AccountName)
-            .Take(50)
-            .ToListAsync();
-
-        // For Farmers: Match ID OR GroupId (GrowerGroup)
-        var farmers = await farmersQuery
-            .Where(f => allowedFarmerIds.Contains(f.Id) || allowedGrowerGroupIds.Contains(f.GroupId))
-            .OrderBy(f => f.FarmerName)
-            .Take(50)
-            .ToListAsync();
-
-        var results = new List<LookupItem>();
-        results.AddRange(bankMasters.Select(bm => new LookupItem { Id = bm.Id, Name = bm.AccountName, Type = AccountTypes.BankMaster, AccountNumber = bm.AccountNumber }));
-        results.AddRange(farmers.Select(f => new LookupItem { Id = f.Id, Name = f.FarmerName, Type = AccountTypes.Farmer, AccountNumber = f.FarmerCode }));
-
-        return results.OrderBy(r => r.Name).Take(100).ToList();
     }
+    #endregion
 
+    #region Misc
     public async Task<List<string>> GetUnitNamesAsync()
     {
-        return await _context.UnitMasters
-            .OrderBy(u => u.UnitName)
-            .Select(u => u.UnitName ?? "")
-            .Where(u => !string.IsNullOrEmpty(u))
-            .Distinct()
-            .ToListAsync();
+        try
+        {
+            return await _context.UnitMasters
+                .OrderBy(u => u.UnitName)
+                .Select(u => u.UnitName ?? "")
+                .Where(u => !string.IsNullOrEmpty(u))
+                .Distinct()
+                .ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
+    #endregion
 }

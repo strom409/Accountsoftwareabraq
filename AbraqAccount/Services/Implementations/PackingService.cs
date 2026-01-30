@@ -19,21 +19,27 @@ public class PackingService : IPackingService
         _context = context;
         _httpContextAccessor = httpContextAccessor;
     }
-
+    #region Packing Recipe
     public async Task<List<PackingRecipe>> GetPackingRecipesAsync(string? searchTerm)
     {
         var query = _context.PackingRecipes
-            .Include(p => p.Materials)
             .AsQueryable();
-
-        if (!string.IsNullOrEmpty(searchTerm))
+        try
         {
-            query = query.Where(p => 
-                (p.RecipeCode != null && p.RecipeCode.Contains(searchTerm)) ||
-                (p.recipename != null && p.recipename.Contains(searchTerm)));
-        }
 
-        return await query.OrderByDescending(p => p.createddate).ToListAsync();
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                query = query.Where(p => 
+                    (p.RecipeCode != null && p.RecipeCode.Contains(searchTerm)) ||
+                    (p.recipename != null && p.recipename.Contains(searchTerm)));
+            }
+
+            return await query.OrderByDescending(p => p.createddate).ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<(bool success, string message)> CreatePackingRecipeAsync(PackingRecipe model, IFormCollection form)
@@ -97,12 +103,51 @@ public class PackingService : IPackingService
 
     public async Task<PackingRecipe?> GetPackingRecipeByIdAsync(long id)
     {
-        return await _context.PackingRecipes
+        var recipe = await _context.PackingRecipes
             .AsNoTracking()
-            .Include(p => p.Materials)
-                .ThenInclude(m => m.PurchaseItem)
             .FirstOrDefaultAsync(m => m.Recipeid == id);
+
+        if (recipe != null)
+        {
+            // 1. Get raw materials first (without Include) to avoid dropping rows with broken FKs
+            var materials = await _context.PackingRecipeMaterials
+                .AsNoTracking()
+                .Where(m => m.RecipeId == id && !m.flagdeleted)
+                .ToListAsync();
+                
+            if (materials.Any())
+            {
+                // 2. Get distinct Item IDs
+                var itemIds = materials.Select(m => m.packingitemid).Distinct().ToList();
+                
+                // 3. Fetch valid items
+                var items = await _context.PurchaseItems
+                    .AsNoTracking()
+                    .Where(p => itemIds.Contains(p.Id))
+                    .ToDictionaryAsync(p => p.Id);
+                    
+                // 4. Stitch manually
+                foreach (var mat in materials)
+                {
+                    if (items.TryGetValue(mat.packingitemid, out var item))
+                    {
+                        mat.PurchaseItem = item;
+                    }
+                    else
+                    {
+                        // Handle missing item (Broken FK)
+                        mat.PurchaseItem = new PurchaseItem { ItemName = "Unknown (Missing)", Code = "N/A", UOM = "" };
+                        mat.MaterialName = "Unknown (Missing)"; 
+                    }
+                }
+                
+                recipe.Materials = materials;
+            }
+        }
+
+        return recipe;
     }
+
 
     public async Task<(bool success, string message)> SavePackingRecipeAsync(PackingRecipe model, List<PackingRecipeMaterial> materials)
     {
@@ -229,65 +274,93 @@ public class PackingService : IPackingService
 
     public async Task<(bool success, string message)> UpdatePackingRecipeAsync(long id, PackingRecipe model, List<PackingRecipeMaterial> materials)
     {
-        model.Recipeid = id;
-        return await SavePackingRecipeAsync(model, materials);
+        try
+        {
+            model.Recipeid = id;
+            return await SavePackingRecipeAsync(model, materials);
+        }
+        catch (Exception ex)
+        {
+             return (false, "Error: " + ex.Message);
+        }
     }
 
     public async Task<IEnumerable<LookupItem>> GetPackingMaterialsAsync(string? searchTerm)
     {
-        var query = _context.PurchaseItems
-            .Where(p => p.InventoryType == "Packing Inventory" && p.IsActive)
-            .AsQueryable();
-
-        if (!string.IsNullOrEmpty(searchTerm))
+        try
         {
-            query = query.Where(p => p.ItemName.Contains(searchTerm) || p.Code.Contains(searchTerm));
-        }
+            var query = _context.PurchaseItems
+                .Where(p => p.InventoryType == "Packing Inventory" && p.IsActive)
+                .AsQueryable();
 
-        return await query
-            .OrderBy(p => p.ItemName)
-            .Select(p => new LookupItem { 
-                Id = p.Id, 
-                Name = p.ItemName,
-                UOM = p.UOM,
-                Rate = p.PurchaseCostingPerNos
-            })
-            .ToListAsync();
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                query = query.Where(p => p.ItemName.Contains(searchTerm) || p.Code.Contains(searchTerm));
+            }
+
+            return await query
+                .OrderBy(p => p.ItemName)
+                .Select(p => new LookupItem { 
+                    Id = p.Id, 
+                    Name = p.ItemName,
+                    UOM = p.UOM,
+                    Rate = p.PurchaseCostingPerNos
+                })
+                .ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<string> GetMaterialUOMAsync(int id)
     {
-        var material = await _context.PurchaseItems.FindAsync(id);
-        return material?.UOM ?? "";
+        try
+        {
+            var material = await _context.PurchaseItems.FindAsync(id);
+            return material?.UOM ?? "";
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<object?> GetSpecialRateFormDataAsync(long id)
     {
-        var recipe = await _context.PackingRecipes
-            .Include(p => p.Materials)
-                .ThenInclude(m => m.PurchaseItem)
-            .FirstOrDefaultAsync(r => r.Recipeid == id);
-
-        if (recipe == null) return null;
-
-        var mainGrowers = await _context.BankMasters
-            .Where(b => b.IsActive && b.SourceType == "C")
-            .OrderBy(b => b.AccountName)
-            .Select(b => new { id = b.PartyId ?? 0, name = b.AccountName, code = "" })
-            .ToListAsync();
-
-        return new
+        try
         {
-            recipeId = recipe.Recipeid,
-            recipeName = recipe.RecipeName,
-            materials = recipe.Materials.Select(m => new
+            var recipe = await _context.PackingRecipes
+                .Include(p => p.Materials)
+                    .ThenInclude(m => m.PurchaseItem)
+                .FirstOrDefaultAsync(r => r.Recipeid == id);
+
+            if (recipe == null) return null;
+
+            var mainGrowers = await _context.BankMasters
+                .Where(b => b.IsActive && b.SourceType == "C")
+                .OrderBy(b => b.AccountName)
+                .Select(b => new { id = b.PartyId ?? 0, name = b.AccountName, code = "" })
+                .ToListAsync();
+
+            return new
             {
-                id = m.PurchaseItemId,
-                name = m.PurchaseItem?.ItemName ?? "",
-                code = m.PurchaseItem?.Code ?? ""
-            }).ToList(),
-            growerGroups = mainGrowers
-        };
+                recipeId = recipe.Recipeid,
+                recipeName = recipe.RecipeName,
+                materials = recipe.Materials.Select(m => new
+                {
+                    id = m.PurchaseItemId,
+                    name = m.PurchaseItem?.ItemName ?? "",
+                    code = m.PurchaseItem?.Code ?? ""
+                }).ToList(),
+                growerGroups = mainGrowers
+            };
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<(bool success, string message)> SaveSpecialRateAsync(SavePackingRateRequest request)
@@ -344,95 +417,118 @@ public class PackingService : IPackingService
 
     public async Task LoadRecipeDropdownsAsync(dynamic viewBag)
     {
-        // Get approved UOMs from Master table (points to RecipePackageId)
-        var units = await _context.UOMs
-            .Where(u => u.IsActive && u.IsApproved)
-            .OrderBy(u => u.UOMName)
-            .Select(u => new { Value = u.Id.ToString(), Text = u.UOMName })
-            .ToListAsync();
+        try
+        {
+            // Get approved UOMs from Master table (points to RecipePackageId)
+            var units = await _context.UOMs
+                .Where(u => u.IsActive && u.IsApproved)
+                .OrderBy(u => u.UOMName)
+                .Select(u => new { Value = u.Id.ToString(), Text = u.UOMName })
+                .ToListAsync();
 
-        viewBag.RecipeUOMName = new SelectList(units, "Value", "Text");
+            viewBag.RecipeUOMName = new SelectList(units, "Value", "Text");
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     private List<PackingRecipeMaterial> GetMaterialsFromForm(IFormCollection form)
     {
-        var materials = new List<PackingRecipeMaterial>();
-        var materialIndex = 0;
-        
-        while (form.ContainsKey($"materials[{materialIndex}].PurchaseItemId"))
+        try
         {
-            var purchaseItemIdStr = form[$"materials[{materialIndex}].PurchaseItemId"].ToString();
-            var qtyStr = form[$"materials[{materialIndex}].Qty"].ToString();
-            var uomStr = form[$"materials[{materialIndex}].UOM"].ToString();
-            var valueStr = form[$"materials[{materialIndex}].Value"].ToString();
-
-            if (int.TryParse(purchaseItemIdStr, out int purchaseItemId) && purchaseItemId > 0)
+            var materials = new List<PackingRecipeMaterial>();
+            var materialIndex = 0;
+            
+            while (form.ContainsKey($"materials[{materialIndex}].PurchaseItemId"))
             {
-                if (decimal.TryParse(qtyStr, out decimal qty) && decimal.TryParse(valueStr, out decimal value))
+                var purchaseItemIdStr = form[$"materials[{materialIndex}].PurchaseItemId"].ToString();
+                var qtyStr = form[$"materials[{materialIndex}].Qty"].ToString();
+                var uomStr = form[$"materials[{materialIndex}].UOM"].ToString();
+                var valueStr = form[$"materials[{materialIndex}].Value"].ToString();
+
+                if (int.TryParse(purchaseItemIdStr, out int purchaseItemId) && purchaseItemId > 0)
                 {
-                    var material = new PackingRecipeMaterial
+                    if (decimal.TryParse(qtyStr, out decimal qty) && decimal.TryParse(valueStr, out decimal value))
                     {
-                        PurchaseItemId = purchaseItemId,
-                        Qty = qty,
-                        UOM = uomStr ?? "",
-                        Value = value,
-                        CreatedAt = DateTime.Now
-                    };
-                    materials.Add(material);
+                        var material = new PackingRecipeMaterial
+                        {
+                            PurchaseItemId = purchaseItemId,
+                            Qty = qty,
+                            UOM = uomStr ?? "",
+                            Value = value,
+                            CreatedAt = DateTime.Now
+                        };
+                        materials.Add(material);
+                    }
                 }
+                materialIndex++;
             }
-            materialIndex++;
+            return materials;
         }
-        return materials;
+        catch (Exception)
+        {
+             throw;
+        }
     }
 
-    // --- Packing Special Rate Implementation ---
+    #endregion
+
+    #region Packing Special Rate Implementation
 
     public async Task<List<PackingSpecialRate>> GetPackingSpecialRatesAsync(string? growerGroupSearch, string? growerNameSearch, string? status)
     {
-        var query = _context.PackingSpecialRates.AsNoTracking().AsQueryable();
-
-        if (!string.IsNullOrEmpty(status) && !status.Equals("ALL", StringComparison.OrdinalIgnoreCase))
+        try
         {
-            bool isActive = status.Equals("Active", StringComparison.OrdinalIgnoreCase);
-            query = query.Where(p => p.IsActive == isActive);
-        }
+            var query = _context.PackingSpecialRates.AsNoTracking().AsQueryable();
 
-        var list = await query.OrderByDescending(p => p.EffectiveDate).ToListAsync();
-
-        // Collect IDs to fetch names from new sources
-        var mainIds = list.Where(p => p.GrowerGroupId.HasValue).Select(p => p.GrowerGroupId.Value).Distinct().ToList();
-        var subIds = list.Where(p => p.FarmerId.HasValue).Select(p => (long)p.FarmerId.Value).Distinct().ToList();
-
-        var mainGrowers = await _context.BankMasters
-            .Where(b => b.PartyId.HasValue && mainIds.Contains((long)b.PartyId.Value))
-            .ToDictionaryAsync(b => (long)b.PartyId!.Value, b => b.AccountName);
-        var subGrowers = await _context.PartySubs.Where(s => subIds.Contains(s.PartyId)).ToDictionaryAsync(s => s.PartyId, s => s.PartyName);
-
-        foreach (var item in list)
-        {
-            if (item.GrowerGroupId.HasValue && mainGrowers.TryGetValue(item.GrowerGroupId.Value, out var mName))
+            if (!string.IsNullOrEmpty(status) && !status.Equals("ALL", StringComparison.OrdinalIgnoreCase))
             {
-                item.GrowerGroup = new BankMaster { AccountName = mName };
+                bool isActive = status.Equals("Active", StringComparison.OrdinalIgnoreCase);
+                query = query.Where(p => p.IsActive == isActive);
             }
-            if (item.FarmerId.HasValue && subGrowers.TryGetValue(item.FarmerId.Value, out var sName))
+
+            var list = await query.OrderByDescending(p => p.EffectiveDate).ToListAsync();
+
+            // Collect IDs to fetch names from new sources
+            var mainIds = list.Where(p => p.GrowerGroupId.HasValue).Select(p => p.GrowerGroupId.Value).Distinct().ToList();
+            var subIds = list.Where(p => p.FarmerId.HasValue).Select(p => (long)p.FarmerId.Value).Distinct().ToList();
+
+            var mainGrowers = await _context.BankMasters
+                .Where(b => b.PartyId.HasValue && mainIds.Contains((long)b.PartyId.Value))
+                .ToDictionaryAsync(b => (long)b.PartyId!.Value, b => b.AccountName);
+            var subGrowers = await _context.PartySubs.Where(s => subIds.Contains(s.PartyId)).ToDictionaryAsync(s => s.PartyId, s => s.PartyName);
+
+            foreach (var item in list)
             {
-                item.Farmer = new PartySub { PartyName = sName };
+                if (item.GrowerGroupId.HasValue && mainGrowers.TryGetValue(item.GrowerGroupId.Value, out var mName))
+                {
+                    item.GrowerGroup = new BankMaster { AccountName = mName };
+                }
+                if (item.FarmerId.HasValue && subGrowers.TryGetValue(item.FarmerId.Value, out var sName))
+                {
+                    item.Farmer = new PartySub { PartyName = sName };
+                }
             }
-        }
 
-        // Apply text filters in memory
-        if (!string.IsNullOrEmpty(growerGroupSearch))
+            // Apply text filters in memory
+            if (!string.IsNullOrEmpty(growerGroupSearch))
+            {
+                list = list.Where(p => p.GrowerGroup != null && p.GrowerGroup.AccountName.Contains(growerGroupSearch, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+
+            if (!string.IsNullOrEmpty(growerNameSearch))
+            {
+                list = list.Where(p => p.Farmer != null && p.Farmer.PartyName.Contains(growerNameSearch, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+
+            return list;
+        }
+        catch (Exception)
         {
-            list = list.Where(p => p.GrowerGroup != null && p.GrowerGroup.AccountName.Contains(growerGroupSearch, StringComparison.OrdinalIgnoreCase)).ToList();
+            throw;
         }
-
-        if (!string.IsNullOrEmpty(growerNameSearch))
-        {
-            list = list.Where(p => p.Farmer != null && p.Farmer.PartyName.Contains(growerNameSearch, StringComparison.OrdinalIgnoreCase)).ToList();
-        }
-
-        return list;
     }
 
     public async Task<(bool success, string message)> CreatePackingSpecialRateAsync(PackingSpecialRate model, IFormCollection form)
@@ -471,23 +567,30 @@ public class PackingService : IPackingService
 
     public async Task<PackingSpecialRate?> GetPackingSpecialRateByIdAsync(int id)
     {
-        var rate = await _context.PackingSpecialRates
-            .Include(p => p.Details)
-                .ThenInclude(d => d.PurchaseItem)
-            .FirstOrDefaultAsync(m => m.Id == id);
-            
-        if (rate != null)
+        try
         {
-            if (rate.GrowerGroupId.HasValue)
+            var rate = await _context.PackingSpecialRates
+                .Include(p => p.Details)
+                    .ThenInclude(d => d.PurchaseItem)
+                .FirstOrDefaultAsync(m => m.Id == id);
+                
+            if (rate != null)
             {
-                rate.GrowerGroup = await _context.BankMasters.FirstOrDefaultAsync(b => b.PartyId == (int)rate.GrowerGroupId.Value);
+                if (rate.GrowerGroupId.HasValue)
+                {
+                    rate.GrowerGroup = await _context.BankMasters.FirstOrDefaultAsync(b => b.PartyId == (int)rate.GrowerGroupId.Value);
+                }
+                if (rate.FarmerId.HasValue)
+                {
+                    rate.Farmer = await _context.PartySubs.FirstOrDefaultAsync(p => p.PartyId == rate.FarmerId.Value);
+                }
             }
-            if (rate.FarmerId.HasValue)
-            {
-                rate.Farmer = await _context.PartySubs.FirstOrDefaultAsync(p => p.PartyId == rate.FarmerId.Value);
-            }
+            return rate;
         }
-        return rate;
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<(bool success, string message)> UpdatePackingSpecialRateAsync(int id, PackingSpecialRate model, List<PackingSpecialRateDetail> details)
@@ -565,56 +668,77 @@ public class PackingService : IPackingService
 
     public async Task<IEnumerable<LookupItem>> GetPackingItemsForRateAsync()
     {
-        return await _context.PurchaseItems
-            .Where(p => p.InventoryType == "Packing Inventory" && p.IsActive)
-            .OrderBy(p => p.ItemName)
-            .Select(p => new LookupItem { 
-                Id = p.Id, 
-                Name = p.ItemName,
-                Rate = p.PurchaseCostingPerNos // Assuming I added Rate to LookupItem or using PurchaseCostingPerNos
-            })
-            .ToListAsync();
+        try
+        {
+            return await _context.PurchaseItems
+                .Where(p => p.InventoryType == "Packing Inventory" && p.IsActive)
+                .OrderBy(p => p.ItemName)
+                .Select(p => new LookupItem { 
+                    Id = p.Id, 
+                    Name = p.ItemName,
+                    Rate = p.PurchaseCostingPerNos // Assuming I added Rate to LookupItem or using PurchaseCostingPerNos
+                })
+                .ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<IEnumerable<LookupItem>> SearchMainGrowersAsync(string? searchTerm)
     {
-        var query = _context.BankMasters.Where(b => b.IsActive && b.SourceType == "C");
-        
-        if (!string.IsNullOrEmpty(searchTerm))
+        try
         {
-            query = query.Where(b => b.AccountName.Contains(searchTerm));
-        }
+            var query = _context.BankMasters.Where(b => b.IsActive && b.SourceType == "C");
+            
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                query = query.Where(b => b.AccountName.Contains(searchTerm));
+            }
 
-        return await query
-            .OrderBy(b => b.AccountName)
-            .Select(b => new LookupItem { 
-                Id = b.PartyId ?? 0, 
-                Name = b.AccountName,
-                Type = "Grower"
-            })
-            .Take(20)
-            .ToListAsync();
+            return await query
+                .OrderBy(b => b.AccountName)
+                .Select(b => new LookupItem { 
+                    Id = b.PartyId ?? 0, 
+                    Name = b.AccountName,
+                    Type = "Grower"
+                })
+                .Take(20)
+                .ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<IEnumerable<LookupItem>> GetFarmersByGroupAsync(long? groupId, string? searchTerm = null)
     {
-        var query = _context.PartySubs.Where(p => p.FlagDeleted == false || p.FlagDeleted == null);
-        
-        if (groupId.HasValue && groupId > 0)
+        try
         {
-            query = query.Where(p => p.MainId == groupId);
-        }
+            var query = _context.PartySubs.Where(p => p.FlagDeleted == false || p.FlagDeleted == null);
+            
+            if (groupId.HasValue && groupId > 0)
+            {
+                query = query.Where(p => p.MainId == groupId);
+            }
 
-        if (!string.IsNullOrEmpty(searchTerm))
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                query = query.Where(p => p.PartyName.Contains(searchTerm));
+            }
+
+            return await query
+                .OrderBy(p => p.PartyName)
+                .Select(p => new LookupItem { Id = (int)p.PartyId, Name = p.PartyName, GroupId = (int?)p.MainId })
+                .Take(20)
+                .ToListAsync();
+        }
+        catch (Exception)
         {
-            query = query.Where(p => p.PartyName.Contains(searchTerm));
+            throw;
         }
-
-        return await query
-            .OrderBy(p => p.PartyName)
-            .Select(p => new LookupItem { Id = (int)p.PartyId, Name = p.PartyName, GroupId = (int?)p.MainId })
-            .Take(20)
-            .ToListAsync();
     }
 
     public async Task<(bool success, string message)> CreateSubGrowerAsync(PartySub subGrower)
@@ -633,69 +757,91 @@ public class PackingService : IPackingService
 
     public async Task LoadSpecialRateDropdownsAsync(dynamic viewBag)
     {
-        // Fetch Main Growers from BankMaster where SourceType == 'C'
-        var mainGrowers = await _context.BankMasters
-            .Where(b => b.IsActive && b.SourceType == "C")
-            .OrderBy(b => b.AccountName)
-            .ToListAsync();
+        try
+        {
+            // Fetch Main Growers from BankMaster where SourceType == 'C'
+            var mainGrowers = await _context.BankMasters
+                .Where(b => b.IsActive && b.SourceType == "C")
+                .OrderBy(b => b.AccountName)
+                .ToListAsync();
 
-        viewBag.GrowerGroupId = new SelectList(mainGrowers.Select(b => new { Id = b.PartyId ?? 0, Name = b.AccountName }), "Id", "Name");
-        
-        // Load ALL sub-growers for initial lookup list if needed (Razor component expects this)
-        var allSubGrowers = await _context.PartySubs
-            .Where(p => (p.FlagDeleted == false || p.FlagDeleted == null))
-            .OrderBy(p => p.PartyName)
-            .Select(p => new LookupItem { Id = (int)p.PartyId, Name = p.PartyName, GroupId = (int?)p.MainId })
-            .ToListAsync();
+            viewBag.GrowerGroupId = new SelectList(mainGrowers.Select(b => new { Id = b.PartyId ?? 0, Name = b.AccountName }), "Id", "Name");
             
-        viewBag.Farmers = allSubGrowers;
+            // Load ALL sub-growers for initial lookup list if needed (Razor component expects this)
+            var allSubGrowers = await _context.PartySubs
+                .Where(p => (p.FlagDeleted == false || p.FlagDeleted == null))
+                .OrderBy(p => p.PartyName)
+                .Select(p => new LookupItem { Id = (int)p.PartyId, Name = p.PartyName, GroupId = (int?)p.MainId })
+                .ToListAsync();
+                
+            viewBag.Farmers = allSubGrowers;
+        }
+        catch (Exception)
+        {
+             throw;
+        }
     }
 
     private List<PackingSpecialRateDetail> GetSpecialRateDetailsFromForm(IFormCollection form, int specialRateId)
     {
-        var details = new List<PackingSpecialRateDetail>();
-        var detailIndex = 0;
-        
-        while (form.ContainsKey($"Details[{detailIndex}].PurchaseItemId"))
+        try
         {
-            var purchaseItemIdStr = form[$"Details[{detailIndex}].PurchaseItemId"].ToString();
-            var rateStr = form[$"Details[{detailIndex}].Rate"].ToString();
-            var specialRateStr = form[$"Details[{detailIndex}].SpecialRate"].ToString();
-
-            if (int.TryParse(purchaseItemIdStr, out int purchaseItemId) && purchaseItemId > 0)
+            var details = new List<PackingSpecialRateDetail>();
+            var detailIndex = 0;
+            
+            while (form.ContainsKey($"Details[{detailIndex}].PurchaseItemId"))
             {
-                if (decimal.TryParse(rateStr, out decimal rate))
+                var purchaseItemIdStr = form[$"Details[{detailIndex}].PurchaseItemId"].ToString();
+                var rateStr = form[$"Details[{detailIndex}].Rate"].ToString();
+                var specialRateStr = form[$"Details[{detailIndex}].SpecialRate"].ToString();
+
+                if (int.TryParse(purchaseItemIdStr, out int purchaseItemId) && purchaseItemId > 0)
                 {
-                    var detail = new PackingSpecialRateDetail
+                    if (decimal.TryParse(rateStr, out decimal rate))
                     {
-                        PackingSpecialRateId = specialRateId,
-                        PurchaseItemId = purchaseItemId,
-                        Rate = rate,
-                        SpecialRate = !string.IsNullOrEmpty(specialRateStr) && decimal.TryParse(specialRateStr, out decimal specialRate) ? specialRate : null,
-                        CreatedAt = DateTime.Now
-                    };
-                    details.Add(detail);
+                        var detail = new PackingSpecialRateDetail
+                        {
+                            PackingSpecialRateId = specialRateId,
+                            PurchaseItemId = purchaseItemId,
+                            Rate = rate,
+                            SpecialRate = !string.IsNullOrEmpty(specialRateStr) && decimal.TryParse(specialRateStr, out decimal specialRate) ? specialRate : null,
+                            CreatedAt = DateTime.Now
+                        };
+                        details.Add(detail);
+                    }
                 }
+                detailIndex++;
             }
-            detailIndex++;
+            return details;
         }
-        return details;
+        catch (Exception)
+        {
+            throw;
+        }
     }
     public async Task<IEnumerable<object>> GetPackingRecipeHistoryAsync(long id)
     {
-        var recipe = await _context.PackingRecipes.FindAsync(id);
-        if (recipe == null) return Enumerable.Empty<object>();
+        try
+        {
+            var recipe = await _context.PackingRecipes.FindAsync(id);
+            if (recipe == null) return Enumerable.Empty<object>();
 
-        return await _context.TransactionHistories
-            .Where(h => h.VoucherType == "PackingRecipe" && h.VoucherNo == recipe.RecipeCode)
-            .OrderByDescending(h => h.ActionDate)
-            .Select(h => new {
-                action = h.Action,
-                user = h.User,
-                dateTime = h.ActionDate,
-                remarks = h.Remarks
-            })
-            .ToListAsync();
+            return await _context.TransactionHistories
+                .Where(h => h.VoucherType == "PackingRecipe" && h.VoucherNo == recipe.RecipeCode)
+                .OrderByDescending(h => h.ActionDate)
+                .Select(h => new {
+                    action = h.Action,
+                    user = h.User,
+                    dateTime = h.ActionDate,
+                    remarks = h.Remarks
+                })
+                .ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
+    #endregion
 }
 

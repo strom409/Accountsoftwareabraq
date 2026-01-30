@@ -251,15 +251,22 @@
 
     protected override void OnInitialized()
     {
-        // Check if already logged in (SSR check)
-        var context = HttpContextAccessor.HttpContext;
-        if (context != null && context.Session != null)
+        try
         {
-            var userSession = context.Session.GetObject<UserSession>(SessionKeys.UserSession);
-            if (userSession != null)
+            // Check if already logged in (SSR check)
+            var context = HttpContextAccessor.HttpContext;
+            if (context != null && context.Session != null)
             {
-                NavigationManager.NavigateTo("dashboard");
+                var userSession = context.Session.GetObject<UserSession>(SessionKeys.UserSession);
+                if (userSession != null)
+                {
+                    NavigationManager.NavigateTo("dashboard");
+                }
             }
+        }
+        catch (NavigationException)
+        {
+            // Ignore exception to prevent debugger break
         }
     }
 }

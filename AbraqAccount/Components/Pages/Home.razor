@@ -13,22 +13,26 @@
     protected override void OnInitialized()
     {
         var context = HttpContextAccessor.HttpContext;
-        if (context != null && context.Session != null)
+        try
         {
-            var userSession = context.Session.GetObject<UserSession>(SessionKeys.UserSession);
-            if (userSession == null)
+            if (context != null && context.Session != null)
             {
-                NavigationManager.NavigateTo("login");
+                var userSession = context.Session.GetObject<UserSession>(SessionKeys.UserSession);
+                if (userSession == null)
+                {
+                    NavigationManager.NavigateTo("login");
+                    return;
+                }
+                // If userSession is not null, navigate to dashboard
+                NavigationManager.NavigateTo("dashboard");
                 return;
             }
-            // If userSession is not null, navigate to dashboard as per original logic,
-            // or allow the current page (root) to load if it's intended as a dashboard.
-            // Assuming the original intent was to redirect to dashboard if logged in.
-            NavigationManager.NavigateTo("dashboard");
-            return;
+            // If context or session is null
+            NavigationManager.NavigateTo("login");
         }
-        // If context or session is null, or no user session found after checks,
-        // navigate to login. This covers cases where context is null initially.
-        NavigationManager.NavigateTo("login");
+        catch (NavigationException)
+        {
+            // Prevent debugger break on redirection
+        }
     }
 }

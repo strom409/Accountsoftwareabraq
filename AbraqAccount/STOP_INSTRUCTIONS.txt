@@ -1,3 +1,0 @@
-Please STOP the application in Visual Studio.
-The build is failing because the files are locked.
-Once stopped, type "stopped" in the chat.

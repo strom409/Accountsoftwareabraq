@@ -14,23 +14,40 @@ public class UOMService : IUOMService
         _context = context;
     }
 
+    #region Retrieval
     public async Task<List<UOM>> GetUOMsAsync(string? searchTerm)
     {
-        IQueryable<UOM> query = _context.UOMs;
-
-        if (!string.IsNullOrEmpty(searchTerm))
+        try
         {
-            query = query.Where(u => u.UOMName.Contains(searchTerm) || u.UOMCode.Contains(searchTerm));
-        }
+            IQueryable<UOM> query = _context.UOMs;
 
-        return await query.OrderByDescending(u => u.CreatedAt).ToListAsync();
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                query = query.Where(u => u.UOMName.Contains(searchTerm) || u.UOMCode.Contains(searchTerm));
+            }
+
+            return await query.OrderByDescending(u => u.CreatedAt).ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<UOM?> GetUOMByIdAsync(int id)
     {
-        return await _context.UOMs.FindAsync(id);
+        try
+        {
+            return await _context.UOMs.FindAsync(id);
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
+    #endregion
 
+    #region Management
     public async Task<bool> CreateUOMAsync(UOM uom, string username)
     {
         try
@@ -120,12 +137,22 @@ public class UOMService : IUOMService
             return false;
         }
     }
+    #endregion
 
+    #region History
     public async Task<List<UOMHistory>> GetUOMHistoryAsync(int uomId)
     {
-        return await _context.UOMHistories
-            .Where(h => h.UOMId == uomId)
-            .OrderByDescending(h => h.ActionDate)
-            .ToListAsync();
+        try
+        {
+            return await _context.UOMHistories
+                .Where(h => h.UOMId == uomId)
+                .OrderByDescending(h => h.ActionDate)
+                .ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
+    #endregion
 }

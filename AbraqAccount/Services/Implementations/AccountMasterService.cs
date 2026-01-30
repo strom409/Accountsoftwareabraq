@@ -14,14 +14,21 @@ public class AccountMasterService : IAccountMasterService
         _context = context;
     }
 
-    // --- Master Group ---
+    #region Master Group
 
     public async Task<List<MasterGroup>> GetMasterGroupsAsync()
     {
-        return await _context.MasterGroups
-            .OrderBy(m => string.IsNullOrEmpty(m.Code) ? "ZZZ" : m.Code)
-            .ThenByDescending(m => m.Id)
-            .ToListAsync();
+        try
+        {
+            return await _context.MasterGroups
+                .OrderBy(m => string.IsNullOrEmpty(m.Code) ? "ZZZ" : m.Code)
+                .ThenByDescending(m => m.Id)
+                .ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<(bool success, string message)> CreateMasterGroupAsync(MasterGroup model)
@@ -41,7 +48,14 @@ public class AccountMasterService : IAccountMasterService
 
     public async Task<MasterGroup?> GetMasterGroupByIdAsync(int id)
     {
-        return await _context.MasterGroups.FindAsync(id);
+        try
+        {
+            return await _context.MasterGroups.FindAsync(id);
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<(bool success, string message)> UpdateMasterGroupAsync(int id, MasterGroup model)
@@ -67,11 +81,18 @@ public class AccountMasterService : IAccountMasterService
 
     public async Task DeleteMasterGroupAsync(int id)
     {
-        var masterGroup = await _context.MasterGroups.FindAsync(id);
-        if (masterGroup != null)
+        try
         {
-            _context.MasterGroups.Remove(masterGroup);
-            await _context.SaveChangesAsync();
+            var masterGroup = await _context.MasterGroups.FindAsync(id);
+            if (masterGroup != null)
+            {
+                _context.MasterGroups.Remove(masterGroup);
+                await _context.SaveChangesAsync();
+            }
+        }
+        catch (Exception)
+        {
+            throw;
         }
     }
 
@@ -143,20 +164,29 @@ public class AccountMasterService : IAccountMasterService
         }
     }
 
-    // --- Master Sub Group ---
+    #endregion
+    
+    #region Master Sub Group
 
     public async Task<(List<MasterSubGroup> subGroups, List<MasterGroup> masterGroups)> GetMasterSubGroupsWithParentsAsync()
     {
-        var masterSubGroups = await _context.MasterSubGroups
-            .Include(m => m.MasterGroup)
-            .OrderByDescending(m => m.Id)
-            .ToListAsync();
-        
-        var masterGroups = await _context.MasterGroups
-            .OrderBy(m => m.Name)
-            .ToListAsync();
+        try
+        {
+            var masterSubGroups = await _context.MasterSubGroups
+                .Include(m => m.MasterGroup)
+                .OrderByDescending(m => m.Id)
+                .ToListAsync();
+            
+            var masterGroups = await _context.MasterGroups
+                .OrderBy(m => m.Name)
+                .ToListAsync();
 
-        return (masterSubGroups, masterGroups);
+            return (masterSubGroups, masterGroups);
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<(bool success, string message)> CreateMasterSubGroupAsync(MasterSubGroup model)
@@ -176,9 +206,16 @@ public class AccountMasterService : IAccountMasterService
 
     public async Task<MasterSubGroup?> GetMasterSubGroupByIdAsync(int id)
     {
-        return await _context.MasterSubGroups
-            .Include(m => m.MasterGroup)
-            .FirstOrDefaultAsync(m => m.Id == id);
+        try
+        {
+            return await _context.MasterSubGroups
+                .Include(m => m.MasterGroup)
+                .FirstOrDefaultAsync(m => m.Id == id);
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<(bool success, string message)> UpdateMasterSubGroupAsync(int id, MasterSubGroup model)
@@ -205,11 +242,18 @@ public class AccountMasterService : IAccountMasterService
 
     public async Task DeleteMasterSubGroupAsync(int id)
     {
-        var masterSubGroup = await _context.MasterSubGroups.FindAsync(id);
-        if (masterSubGroup != null)
+        try
         {
-            _context.MasterSubGroups.Remove(masterSubGroup);
-            await _context.SaveChangesAsync();
+            var masterSubGroup = await _context.MasterSubGroups.FindAsync(id);
+            if (masterSubGroup != null)
+            {
+                _context.MasterSubGroups.Remove(masterSubGroup);
+                await _context.SaveChangesAsync();
+            }
+        }
+        catch (Exception)
+        {
+            throw;
         }
     }
 
@@ -297,31 +341,47 @@ public class AccountMasterService : IAccountMasterService
 
     public async Task<IEnumerable<object>> GetMasterSubGroupsForDropdownAsync(int masterGroupId)
     {
-        return await _context.MasterSubGroups
-            .Where(m => m.MasterGroupId == masterGroupId)
-            .OrderBy(m => m.Name)
-            .Select(m => new { m.Id, m.Name })
-            .ToListAsync();
+        try
+        {
+            return await _context.MasterSubGroups
+                .Where(m => m.MasterGroupId == masterGroupId)
+                .OrderBy(m => m.Name)
+                .Select(m => new { m.Id, m.Name })
+                .ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
-    // --- Sub Group Ledger ---
+    #endregion
+    
+    #region Sub Group Ledger
 
     public async Task<(List<SubGroupLedger> ledgers, List<MasterSubGroup> masterSubGroups)> GetSubGroupLedgersWithParentsAsync()
     {
-        var subGroupLedgers = await _context.SubGroupLedgers
-            .Include(s => s.MasterGroup)
-            .Include(s => s.MasterSubGroup)
-            .OrderByDescending(s => s.Id)
-            .ToListAsync();
-        
-        var masterSubGroups = await _context.MasterSubGroups
-            .Include(msg => msg.MasterGroup)
-            .Where(msg => msg.IsActive)
-            .OrderBy(msg => msg.MasterGroup != null ? msg.MasterGroup.Name : "")
-            .ThenBy(msg => msg.Name)
-            .ToListAsync();
+        try
+        {
+            var subGroupLedgers = await _context.SubGroupLedgers
+                .Include(s => s.MasterGroup)
+                .Include(s => s.MasterSubGroup)
+                .OrderByDescending(s => s.Id)
+                .ToListAsync();
+            
+            var masterSubGroups = await _context.MasterSubGroups
+                .Include(msg => msg.MasterGroup)
+                .Where(msg => msg.IsActive)
+                .OrderBy(msg => msg.MasterGroup != null ? msg.MasterGroup.Name : "")
+                .ThenBy(msg => msg.Name)
+                .ToListAsync();
 
-        return (subGroupLedgers, masterSubGroups);
+            return (subGroupLedgers, masterSubGroups);
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<(bool success, string message)> CreateSubGroupLedgerAsync(SubGroupLedger model)
@@ -354,10 +414,17 @@ public class AccountMasterService : IAccountMasterService
 
     public async Task<SubGroupLedger?> GetSubGroupLedgerByIdAsync(int id)
     {
-        return await _context.SubGroupLedgers
-            .Include(s => s.MasterGroup)
-            .Include(s => s.MasterSubGroup)
-            .FirstOrDefaultAsync(s => s.Id == id);
+        try
+        {
+            return await _context.SubGroupLedgers
+                .Include(s => s.MasterGroup)
+                .Include(s => s.MasterSubGroup)
+                .FirstOrDefaultAsync(s => s.Id == id);
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<(bool success, string message)> UpdateSubGroupLedgerAsync(int id, SubGroupLedger model)
@@ -398,11 +465,18 @@ public class AccountMasterService : IAccountMasterService
 
     public async Task DeleteSubGroupLedgerAsync(int id)
     {
-        var subGroupLedger = await _context.SubGroupLedgers.FindAsync(id);
-        if (subGroupLedger != null)
+        try
         {
-            _context.SubGroupLedgers.Remove(subGroupLedger);
-            await _context.SaveChangesAsync();
+            var subGroupLedger = await _context.SubGroupLedgers.FindAsync(id);
+            if (subGroupLedger != null)
+            {
+                _context.SubGroupLedgers.Remove(subGroupLedger);
+                await _context.SaveChangesAsync();
+            }
+        }
+        catch (Exception)
+        {
+            throw;
         }
     }
 
@@ -535,5 +609,6 @@ public class AccountMasterService : IAccountMasterService
             Console.WriteLine($"Warning: Could not add Code column: {ex.Message}");
         }
     }
+    #endregion
 }
 

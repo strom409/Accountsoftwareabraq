@@ -15,119 +15,187 @@ public class BankMasterService : IBankMasterService
         _context = context;
     }
 
+    #region BankMaster CRUD
     public async Task<IEnumerable<BankMaster>> GetAllActiveBankMastersAsync()
     {
-        await FixNullAccountNamesAsync();
+        try
+        {
+            await FixNullAccountNamesAsync();
 
-        return await _context.BankMasters
-            .Include(b => b.Group)
-            .Where(b => b.IsActive)
-            .OrderBy(b => b.AccountName)
-            .ToListAsync();
+            return await _context.BankMasters
+                .Include(b => b.Group)
+                .Where(b => b.IsActive)
+                .OrderBy(b => b.AccountName)
+                .ToListAsync();
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<BankMaster?> GetBankMasterByIdAsync(int id)
     {
-        return await _context.BankMasters
-            .Include(b => b.Group)
-            .FirstOrDefaultAsync(b => b.Id == id);
+        try
+        {
+            return await _context.BankMasters
+                .Include(b => b.Group)
+                .FirstOrDefaultAsync(b => b.Id == id);
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<BankMaster> CreateBankMasterAsync(BankMaster bankMaster, string username)
     {
-        // Make old columns nullable
-        await MakeOldColumnsNullableAsync();
-
-        bankMaster.CreatedDate = DateTime.Now;
-        bankMaster.IsActive = true;
-        if (string.IsNullOrEmpty(bankMaster.CreatedBy))
+        try
         {
-            bankMaster.CreatedBy = username;
-        }
+            // Make old columns nullable
+            await MakeOldColumnsNullableAsync();
 
-        _context.Add(bankMaster);
-        await _context.SaveChangesAsync();
-        return bankMaster;
+            bankMaster.CreatedDate = DateTime.Now;
+            bankMaster.IsActive = true;
+            if (string.IsNullOrEmpty(bankMaster.CreatedBy))
+            {
+                bankMaster.CreatedBy = username;
+            }
+
+            _context.Add(bankMaster);
+            await _context.SaveChangesAsync();
+            return bankMaster;
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<BankMaster> UpdateBankMasterAsync(int id, BankMaster bankMaster)
     {
-        var existingBankMaster = await _context.BankMasters.FindAsync(id);
-        if (existingBankMaster == null)
+        try
         {
-            throw new InvalidOperationException("Bank master not found");
+            var existingBankMaster = await _context.BankMasters.FindAsync(id);
+            if (existingBankMaster == null)
+            {
+                throw new InvalidOperationException("Bank master not found");
+            }
+
+            // Update properties
+            existingBankMaster.AccountName = bankMaster.AccountName;
+            existingBankMaster.GroupId = bankMaster.GroupId;
+            existingBankMaster.Status = bankMaster.Status;
+            existingBankMaster.Address = bankMaster.Address;
+            existingBankMaster.Phone = bankMaster.Phone;
+            existingBankMaster.Email = bankMaster.Email;
+            existingBankMaster.AccountNumber = bankMaster.AccountNumber;
+            existingBankMaster.IfscCode = bankMaster.IfscCode;
+            existingBankMaster.BranchName = bankMaster.BranchName;
+
+            _context.Update(existingBankMaster);
+            await _context.SaveChangesAsync();
+            return existingBankMaster;
         }
-
-        // Update properties
-        existingBankMaster.AccountName = bankMaster.AccountName;
-        existingBankMaster.GroupId = bankMaster.GroupId;
-        existingBankMaster.Status = bankMaster.Status;
-        existingBankMaster.Address = bankMaster.Address;
-        existingBankMaster.Phone = bankMaster.Phone;
-        existingBankMaster.Email = bankMaster.Email;
-        existingBankMaster.AccountNumber = bankMaster.AccountNumber;
-        existingBankMaster.IfscCode = bankMaster.IfscCode;
-        existingBankMaster.BranchName = bankMaster.BranchName;
-
-        _context.Update(existingBankMaster);
-        await _context.SaveChangesAsync();
-        return existingBankMaster;
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<bool> DeleteBankMasterAsync(int id)
     {
-        var bankMaster = await _context.BankMasters.FindAsync(id);
-        if (bankMaster == null)
+        try
         {
-            return false;
-        }
+            var bankMaster = await _context.BankMasters.FindAsync(id);
+            if (bankMaster == null)
+            {
+                return false;
+            }
 
-        bankMaster.IsActive = false;
-        _context.Update(bankMaster);
-        await _context.SaveChangesAsync();
-        return true;
+            bankMaster.IsActive = false;
+            _context.Update(bankMaster);
+            await _context.SaveChangesAsync();
+            return true;
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<bool> BankMasterExistsAsync(int id)
     {
-        return await _context.BankMasters.AnyAsync(e => e.Id == id);
+        try
+        {
+            return await _context.BankMasters.AnyAsync(e => e.Id == id);
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<bool> AccountNameExistsAsync(string accountName, int? excludeId = null)
     {
-        if (excludeId.HasValue)
+        try
         {
-            return await _context.BankMasters.AnyAsync(b => b.AccountName == accountName && b.Id != excludeId.Value && b.IsActive);
+            if (excludeId.HasValue)
+            {
+                return await _context.BankMasters.AnyAsync(b => b.AccountName == accountName && b.Id != excludeId.Value && b.IsActive);
+            }
+            return await _context.BankMasters.AnyAsync(b => b.AccountName == accountName && b.IsActive);
         }
-        return await _context.BankMasters.AnyAsync(b => b.AccountName == accountName && b.IsActive);
+        catch (Exception)
+        {
+            throw;
+        }
     }
 
     public async Task<bool> AccountNumberExistsAsync(string accountNumber, int? excludeId = null)
     {
-        if (string.IsNullOrEmpty(accountNumber))
+        try
         {
-            return false;
-        }
+            if (string.IsNullOrEmpty(accountNumber))
+            {
+                return false;
+            }
 
-        if (excludeId.HasValue)
-        {
-            return await _context.BankMasters.AnyAsync(b => b.AccountNumber == accountNumber && b.Id != excludeId.Value && b.IsActive);
+            if (excludeId.HasValue)
+            {
+                return await _context.BankMasters.AnyAsync(b => b.AccountNumber == accountNumber && b.Id != excludeId.Value && b.IsActive);
+            }
+            return await _context.BankMasters.AnyAsync(b => b.AccountNumber == accountNumber && b.IsActive);
         }
-        return await _context.BankMasters.AnyAsync(b => b.AccountNumber == accountNumber && b.IsActive);
+        catch (Exception)
+        {
+            throw;
+        }
     }
+    #endregion
 
+    #region Dropdowns
     public async Task<SelectList> GetGroupsSelectListAsync(int? selectedValue = null)
     {
-        var groups = await _context.SubGroupLedgers
-            .Include(sgl => sgl.MasterGroup)
-            .Include(sgl => sgl.MasterSubGroup)
-            .Where(l => l.IsActive)
-            .OrderBy(l => l.Name)
-            .ToListAsync();
+        try
+        {
+            var groups = await _context.SubGroupLedgers
+                .Include(sgl => sgl.MasterGroup)
+                .Include(sgl => sgl.MasterSubGroup)
+                .Where(l => l.IsActive)
+                .OrderBy(l => l.Name)
+                .ToListAsync();
 
-        return new SelectList(groups, "Id", "Name", selectedValue);
+            return new SelectList(groups, "Id", "Name", selectedValue);
+        }
+        catch (Exception)
+        {
+            throw;
+        }
     }
+    #endregion
 
+    #region Helpers
     public async Task FixNullAccountNamesAsync()
     {
         try
@@ -185,7 +253,9 @@ public class BankMasterService : IBankMasterService
         }
         catch { }
     }
+    #endregion
 
+    #region Migration
     public async Task<(bool success, string message, List<string> steps)> MigrateDatabaseAsync()
     {
         var results = new List<string>();
@@ -394,5 +464,6 @@ public class BankMasterService : IBankMasterService
             return (false, $"Migration failed: {ex.Message}", results);
         }
     }
+    #endregion
 }
 
